@@ -1,9 +1,7 @@
 #include "my_application.h"
 
 #include <flutter_linux/flutter_linux.h>
-#ifdef GDK_WINDOWING_X11
-#include <gdk/gdkx.h>
-#endif
+#include <gtk/gtk.h>
 
 #include "flutter/generated_plugin_registrant.h"
 
@@ -19,35 +17,57 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
 }
 
+static gboolean is_truthy_env(const gchar* v) {
+  if (v == nullptr) return FALSE;
+  gchar* s = g_ascii_strdown(v, -1);
+  gboolean ok =
+      (g_strcmp0(s, "1") == 0) ||
+      (g_strcmp0(s, "true") == 0) ||
+      (g_strcmp0(s, "yes") == 0) ||
+      (g_strcmp0(s, "on") == 0);
+  g_free(s);
+  return ok;
+}
+
+static gboolean should_use_titlebar() {
+   // For installer scripts
+  // EVERCAL_TITLEBAR=1  -> titlebar/headerbar
+  // EVERCAL_TITLEBAR=0  -> no decorations
+  const gchar* v = g_getenv("EVERCAL_TITLEBAR");
+  return is_truthy_env(v);
+}
+
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
+
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
-      gtk_window_set_decorated(window, FALSE);
-      gtk_window_set_title(window, "EverCal");
-  
-  gboolean use_header_bar = TRUE;
-#ifdef GDK_WINDOWING_X11
-  GdkScreen* screen = gtk_window_get_screen(window);
-  if (GDK_IS_X11_SCREEN(screen)) {
-    const gchar* wm_name = gdk_x11_screen_get_window_manager_name(screen);
-    if (g_strcmp0(wm_name, "GNOME Shell") != 0) {
-      use_header_bar = FALSE;
-    }
-  }
-#endif
-  if (use_header_bar) {
+
+  const gboolean use_titlebar = should_use_titlebar();
+
+  // Set icon explicitly
+  gtk_window_set_icon_name(window, "evercal");
+  gtk_window_set_default_icon_name("evercal");
+
+  gtk_window_set_title(window, "EverCal");
+  gtk_window_set_default_size(window, 900, 600);
+
+  if (use_titlebar) {
+    // Explicitly enable decorations
+    gtk_window_set_decorated(window, TRUE);
+    
+    // CSD headerbar
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
-    gtk_widget_show(GTK_WIDGET(header_bar));
     gtk_header_bar_set_title(header_bar, "EverCal");
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
+    gtk_widget_show(GTK_WIDGET(header_bar));
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
-    gtk_window_set_title(window, "EverCal");
+    // WM Mode:
+    gtk_window_set_decorated(window, FALSE);
+    gtk_window_set_titlebar(window, nullptr);
   }
-
-  gtk_window_set_default_size(window, 900, 600);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
@@ -57,6 +77,7 @@ static void my_application_activate(GApplication* application) {
   GdkRGBA background_color;
   gdk_rgba_parse(&background_color, "#000000");
   fl_view_set_background_color(view, &background_color);
+
   gtk_widget_show(GTK_WIDGET(view));
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
 
@@ -119,9 +140,12 @@ static void my_application_class_init(MyApplicationClass* klass) {
 static void my_application_init(MyApplication* self) {}
 
 MyApplication* my_application_new() {
-  g_set_prgname(APPLICATION_ID);
+  const char* app_id = "com.snes.evercal";
+  
+  g_set_prgname(app_id);
 
   return MY_APPLICATION(g_object_new(my_application_get_type(),
-                                     "application-id", APPLICATION_ID, "flags",
-                                     G_APPLICATION_NON_UNIQUE, nullptr));
+                                     "application-id", app_id, 
+                                     "flags", G_APPLICATION_NON_UNIQUE, 
+                                     nullptr));
 }
