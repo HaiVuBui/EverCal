@@ -4,26 +4,14 @@ A simple calendar application written in Flutter.
 
 I built this because I wanted a functional calendar that actually looked good on my Linux desktop. It is specifically designed to work seamlessly with tiling window managers like Hyprland.
 
-_[Evercal now has a weekview mode]_
-
 ## Screenshots
 
-<table align="center">
-  <tr>
-    <th colspan="2">Week View</th>
-  </tr>
-  <tr>
-    <td><img src="screenshots/v3_1.png" width="100%" /></td>
-    <td><img src="screenshots/v3_2.png" width="100%" /></td>
-  </tr>
-  <tr>
-    <th colspan="2">Month View</th>
-  </tr>
-  <tr>
-    <td><img src="screenshots/DARK.png" width="100%" /></td>
-    <td><img src="screenshots/LIGHT.png" width="100%" /></td>
-  </tr>
-</table>
+<div align="center">
+<div style="display:flex; justify-content:center; gap:10px;">
+  <img src="screenshots/1.jpg" width="40%" />
+  <img src="screenshots/2.jpg" width="40%" />
+</div>
+</div>
 
 ## Features
 
