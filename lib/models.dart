@@ -7,7 +7,7 @@ import 'package:flutter/material.dart'; // For IconData
 import 'dart:convert';
 
 // Enums
-enum AppThemeSetting { dark, light, auto }
+enum AppThemeSetting { dark, light, rosePineDawn, auto }
 enum WeatherUnit { celsius, fahrenheit, kelvin }
 enum CalendarViewMode { month, week }
 enum EventSource { manual, imported, khal }

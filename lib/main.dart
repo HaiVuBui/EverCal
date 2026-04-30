@@ -94,11 +94,11 @@ class _MyCalendarAppState extends State<MyCalendarApp> {
     final savedView = settings['calendar_view'];
     
     if (mode == 'light') {
-      setState(() => _themeSetting = AppThemeSetting.light);
-      _updateManualTheme(ThemeMode.light);
+      _applyManualTheme(AppThemeSetting.light, ThemeMode.light);
+    } else if (mode == 'rose_pine_dawn') {
+      _applyManualTheme(AppThemeSetting.rosePineDawn, ThemeMode.light);
     } else if (mode == 'dark') {
-      setState(() => _themeSetting = AppThemeSetting.dark);
-      _updateManualTheme(ThemeMode.dark);
+      _applyManualTheme(AppThemeSetting.dark, ThemeMode.dark);
     } else {
       // if 'auto'-- defer to the file watcher
       setState(() => _themeSetting = AppThemeSetting.auto);
@@ -106,35 +106,36 @@ class _MyCalendarAppState extends State<MyCalendarApp> {
     }
   }
 
-  // Cycle theme: Dark - Light - Auto - Dark
+  // Cycle theme: Dark - Light - Rose Pine Dawn - Auto - Dark
   Future<void> _cycleTheme() async {
     final settings = await _readSettings();
 
-    setState(() {
-      if (_themeSetting == AppThemeSetting.dark) {
-        _themeSetting = AppThemeSetting.light;
-        _updateManualTheme(ThemeMode.light);
-        settings['theme_mode'] = 'light';
-      } else if (_themeSetting == AppThemeSetting.light) {
-        _themeSetting = AppThemeSetting.auto;
-        _startWatchingTheme();
-        settings['theme_mode'] = 'auto';
-      } else {
-        _themeSetting = AppThemeSetting.dark;
-        _updateManualTheme(ThemeMode.dark);
-        settings['theme_mode'] = 'dark';
-      }
-    });
+    if (_themeSetting == AppThemeSetting.dark) {
+      _applyManualTheme(AppThemeSetting.light, ThemeMode.light);
+      settings['theme_mode'] = 'light';
+    } else if (_themeSetting == AppThemeSetting.light) {
+      _applyManualTheme(AppThemeSetting.rosePineDawn, ThemeMode.light);
+      settings['theme_mode'] = 'rose_pine_dawn';
+    } else if (_themeSetting == AppThemeSetting.rosePineDawn) {
+      setState(() => _themeSetting = AppThemeSetting.auto);
+      _startWatchingTheme();
+      settings['theme_mode'] = 'auto';
+    } else {
+      _applyManualTheme(AppThemeSetting.dark, ThemeMode.dark);
+      settings['theme_mode'] = 'dark';
+    }
 
     await _writeSettings(settings);
   }
-// Manual theme Mode
-  void _updateManualTheme(ThemeMode mode) {
+
+  void _applyManualTheme(AppThemeSetting setting, ThemeMode mode) {
     _stopWatchingTheme();
     setState(() {
+      _themeSetting = setting;
       _effectiveThemeMode = mode;
     });
   }
+
 // Auto Mode (from File Watcher)
   void _startWatchingTheme() {
     _readStateFile(); // Read immediately
@@ -196,6 +197,8 @@ class _MyCalendarAppState extends State<MyCalendarApp> {
         return Icons.dark_mode_rounded;
       case AppThemeSetting.light:
         return Icons.light_mode_rounded;
+      case AppThemeSetting.rosePineDawn:
+        return Icons.palette_rounded;
       case AppThemeSetting.auto:
         return Icons.brightness_auto_rounded;
     }
@@ -259,15 +262,48 @@ class _MyCalendarAppState extends State<MyCalendarApp> {
       ),
     );
 
+    final rosePineDawnTheme = ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      fontFamily: 'Manrope',
+      colorScheme: const ColorScheme.light(
+        background: Color(0xFFFAF4ED),
+        surface: Color(0xFFF2E9E1),
+        surfaceVariant: Color(0xFFECE1D8),
+        onSurfaceVariant: Color(0xFF797593),
+        primary: Color(0xFF286983),
+        primaryContainer: Color(0xFFDCEAF0),
+        secondary: Color(0xFFD7827E),
+        tertiary: Color(0xFF907AA9),
+        onBackground: Color(0xFF575279),
+        onSurface: Color(0xFF575279),
+        onPrimary: Color(0xFFFAF4ED),
+        onPrimaryContainer: Color(0xFF575279),
+        error: Color(0xFFB4637A),
+        outline: Color(0xFFD4C8BE),
+      ),
+      scaffoldBackgroundColor: const Color(0xFFFAF4ED),
+      dividerTheme: DividerThemeData(
+        color: const Color(0xFFD4C8BE).withOpacity(0.5),
+        thickness: 1,
+      ),
+    );
+
+    final activeTheme = switch (_themeSetting) {
+      AppThemeSetting.dark => darkTheme,
+      AppThemeSetting.light => lightTheme,
+      AppThemeSetting.rosePineDawn => rosePineDawnTheme,
+      AppThemeSetting.auto =>
+        _effectiveThemeMode == ThemeMode.dark ? darkTheme : lightTheme,
+    };
+
     return MaterialApp(
       title: 'EverCal',
       debugShowCheckedModeBanner: false,
-      theme: lightTheme,
-      darkTheme: darkTheme,
-      themeMode: _effectiveThemeMode, // Mode from above
+      theme: activeTheme,
       home: CalendarHome(
         onThemeToggle: _cycleTheme,
-        isDarkMode: _effectiveThemeMode == ThemeMode.dark,
+        isDarkMode: activeTheme.brightness == Brightness.dark,
         currentIcon: _currentThemeIcon,
       ),
     );
