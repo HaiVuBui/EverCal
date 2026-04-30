@@ -458,6 +458,7 @@ class _EventDescriptionText extends StatefulWidget {
 class _EventDescriptionTextState extends State<_EventDescriptionText> {
   final List<TapGestureRecognizer> _recognizers = [];
   static final RegExp _urlPattern = RegExp(r'https?:\/\/[^\s]+');
+  static final RegExp _trailingUrlPunctuation = RegExp(r'[.,;:!?\)\]]+$');
 
   @override
   void dispose() {
@@ -496,15 +497,25 @@ class _EventDescriptionTextState extends State<_EventDescriptionText> {
         ));
       }
 
-      final url = match.group(0)!;
-      final recognizer = TapGestureRecognizer()..onTap = () => _openUrl(url);
+      final rawUrl = match.group(0)!;
+      final trimmedUrl = rawUrl.replaceFirst(_trailingUrlPunctuation, '');
+      final trailingText = rawUrl.substring(trimmedUrl.length);
+      final recognizer =
+          TapGestureRecognizer()..onTap = () => _openUrl(trimmedUrl);
       _recognizers.add(recognizer);
 
       spans.add(TextSpan(
-        text: url,
+        text: trimmedUrl,
         style: widget.linkStyle ?? widget.style,
         recognizer: recognizer,
       ));
+
+      if (trailingText.isNotEmpty) {
+        spans.add(TextSpan(
+          text: trailingText,
+          style: widget.style,
+        ));
+      }
 
       currentIndex = match.end;
     }

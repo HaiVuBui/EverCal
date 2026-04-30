@@ -1039,8 +1039,6 @@ class _CalendarHomeState extends State<CalendarHome> {
     await _saveManualEventsToDisk();
   }
 
-  bool _sameEvent(CalendarEvent a, CalendarEvent b) => a.id == b.id;
-
   Future<void> _deleteEvent(DateTime date, CalendarEvent event) async {
     // Khal Events cannot be deleted here (for now)
     if (event.source == EventSource.khal) {
