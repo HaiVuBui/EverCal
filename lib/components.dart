@@ -254,7 +254,13 @@ class _ViewSwitcherState extends State<ViewSwitcher> {
 class EventCard extends StatefulWidget {
   final CalendarEvent event;
   final VoidCallback onDelete;
-  const EventCard({super.key, required this.event, required this.onDelete});
+  final VoidCallback? onEdit;
+  const EventCard({
+    super.key,
+    required this.event,
+    required this.onDelete,
+    this.onEdit,
+  });
 
   @override
   State<EventCard> createState() => _EventCardState();
@@ -376,13 +382,33 @@ class _EventCardState extends State<EventCard> {
                           ),
                         Align(
                           alignment: Alignment.centerRight,
-                          child: TextButton.icon(
-                            onPressed: widget.onDelete,
-                            icon: Icon(Icons.delete_outline,
-                                size: 18, color: theme.colorScheme.error),
-                            label: Text('Delete',
-                                style:
-                                    TextStyle(color: theme.colorScheme.error)),
+                          child: Wrap(
+                            spacing: 8,
+                            children: [
+                              if (widget.onEdit != null)
+                                TextButton.icon(
+                                  onPressed: widget.onEdit,
+                                  icon: Icon(
+                                    Icons.edit_outlined,
+                                    size: 18,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                  label: Text(
+                                    'Edit',
+                                    style: TextStyle(
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                  ),
+                                ),
+                              TextButton.icon(
+                                onPressed: widget.onDelete,
+                                icon: Icon(Icons.delete_outline,
+                                    size: 18, color: theme.colorScheme.error),
+                                label: Text('Delete',
+                                    style: TextStyle(
+                                        color: theme.colorScheme.error)),
+                              ),
+                            ],
                           ),
                         ),
                       ],

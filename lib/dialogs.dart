@@ -176,12 +176,14 @@ class AddEventDialog extends StatefulWidget {
   final DateTime initialSelectedDate;
   final String Function(String input) fnv1aHex;
   final Function(DateTime, CalendarEvent) onSave;
+  final CalendarEvent? existingEvent;
 
   const AddEventDialog({
     super.key,
     required this.initialSelectedDate,
     required this.fnv1aHex,
     required this.onSave,
+    this.existingEvent,
   });
 
   @override
@@ -207,14 +209,40 @@ class _AddEventDialogState extends State<AddEventDialog> {
   late DateTime endDate;
   late TimeOfDay endTime;
 
+  bool get _isEditing => widget.existingEvent != null;
+  bool get _isSingleOccurrenceEdit =>
+      widget.existingEvent != null &&
+      (((widget.existingEvent!.rrule != null &&
+                  widget.existingEvent!.rrule!.isNotEmpty) ||
+              widget.existingEvent!.isGenerated));
+
   @override
   void initState() {
     super.initState();
+    final existing = widget.existingEvent;
     final now = DateTime.now();
     final base = widget.initialSelectedDate;
-    
-    DateTime start = DateTime(base.year, base.month, base.day, now.hour, 0);
-    DateTime end = start.add(const Duration(hours: 1));
+
+    DateTime start;
+    DateTime end;
+
+    if (existing != null) {
+      titleController.text = existing.title;
+      locationController.text = existing.location ?? '';
+      descriptionController.text = existing.description ?? '';
+      start = existing.startTime;
+      end = existing.endTime;
+
+      if (_isSingleOccurrenceEdit) {
+        selectedFreq = 'NONE';
+      } else if (existing.rrule != null && existing.rrule!.isNotEmpty) {
+        final match = RegExp(r'FREQ=([^;]+)').firstMatch(existing.rrule!);
+        selectedFreq = match?.group(1)?.toUpperCase() ?? 'NONE';
+      }
+    } else {
+      start = DateTime(base.year, base.month, base.day, now.hour, 0);
+      end = start.add(const Duration(hours: 1));
+    }
 
     startDate = DateTime(start.year, start.month, start.day);
     startTime = TimeOfDay(hour: start.hour, minute: start.minute);
@@ -332,7 +360,10 @@ class _AddEventDialogState extends State<AddEventDialog> {
     );
 
     return AlertDialog(
-      title: const Text('New Event', textAlign: TextAlign.center),
+      title: Text(
+        _isEditing ? 'Edit Event' : 'New Event',
+        textAlign: TextAlign.center,
+      ),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
 
       // CONTENT BOX
@@ -380,14 +411,19 @@ class _AddEventDialogState extends State<AddEventDialog> {
                           value: selectedFreq,
                           decoration: inputDecor,
                           dropdownColor: theme.colorScheme.surfaceContainerHigh,
+                          disabledHint: Text(
+                            freqOptions[selectedFreq] ?? 'Does not repeat',
+                            style: const TextStyle(fontSize: 14),
+                          ),
                           items: freqOptions.entries.map((e) {
                             return DropdownMenuItem(
                                 value: e.key,
                                 child: Text(e.value,
                                     style: const TextStyle(fontSize: 14)));
                           }).toList(),
-                          onChanged: (val) =>
-                              setState(() => selectedFreq = val),
+                          onChanged: _isSingleOccurrenceEdit
+                              ? null
+                              : (val) => setState(() => selectedFreq = val),
                         ),
                       ],
                     ),
@@ -444,10 +480,11 @@ class _AddEventDialogState extends State<AddEventDialog> {
               rrule = 'FREQ=$selectedFreq';
             }
 
-            final sig =
-                'manual|${titleController.text}|${s.toIso8601String()}|${e.toIso8601String()}|$rrule';
-            // Use the passed function for stable hash
-            final id = 'man_${widget.fnv1aHex(sig)}';
+            final existing = widget.existingEvent;
+            final sig = existing == null
+                ? 'manual|${titleController.text}|${s.toIso8601String()}|${e.toIso8601String()}|$rrule'
+                : 'manual_edit|${existing.id}|${titleController.text}|${s.toIso8601String()}|${e.toIso8601String()}|$rrule';
+            final id = existing?.id ?? 'man_${widget.fnv1aHex(sig)}';
 
             final newEvent = CalendarEvent(
               id: id,
@@ -456,15 +493,17 @@ class _AddEventDialogState extends State<AddEventDialog> {
               endTime: e,
               location: locationController.text,
               description: descriptionController.text,
-              source: EventSource.manual,
-              sourceId: 'manual',
+              source: existing?.source ?? EventSource.manual,
+              sourceId: existing?.sourceId ?? 'manual',
               rrule: rrule,
+              exceptionDates: existing?.exceptionDates ?? const [],
+              isHidden: existing?.isHidden ?? false,
             );
 
             widget.onSave(s, newEvent);
             Navigator.pop(context);
           },
-          child: const Text('Save'),
+          child: Text(_isEditing ? 'Update' : 'Save'),
         ),
       ],
     );

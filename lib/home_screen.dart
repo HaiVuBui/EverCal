@@ -884,6 +884,32 @@ class _CalendarHomeState extends State<CalendarHome> {
     );
   }
 
+  Future<void> _showEditEventDialog(CalendarEvent event) async {
+    if (event.source != EventSource.manual) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Only manual events can be edited right now.')));
+      }
+      return;
+    }
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AddEventDialog(
+              initialSelectedDate: event.startTime,
+              existingEvent: event,
+              fnv1aHex: _fnv1aHex,
+              onSave: (date, updatedEvent) => _updateEvent(event, updatedEvent),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _addEvent(DateTime date, CalendarEvent event) async {
     final normalized = DateTime(date.year, date.month, date.day);
     
@@ -912,6 +938,105 @@ class _CalendarHomeState extends State<CalendarHome> {
 
     // Save to disk in background
     _saveManualEventsToDisk(); 
+  }
+
+  DateTime _normalizeDate(DateTime date) =>
+      DateTime(date.year, date.month, date.day);
+
+  bool _isRecurringEvent(CalendarEvent event) =>
+      (event.rrule != null && event.rrule!.isNotEmpty) || event.isGenerated;
+
+  String _masterEventId(CalendarEvent event) =>
+      event.id.contains('_r') ? event.id.split('_r')[0] : event.id;
+
+  CalendarEvent? _findManualMasterEvent(String masterId) {
+    for (final list in _manualEvents.values) {
+      try {
+        return list.firstWhere((e) => e.id == masterId && !e.isGenerated);
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  void _removeManualEventById(String id) {
+    final emptyDates = <DateTime>[];
+    for (final entry in _manualEvents.entries) {
+      entry.value.removeWhere((event) => event.id == id);
+      if (entry.value.isEmpty) emptyDates.add(entry.key);
+    }
+    for (final date in emptyDates) {
+      _manualEvents.remove(date);
+    }
+  }
+
+  void _rebuildMergedEvents() {
+    setState(() {
+      _events = _mergeEventMaps(
+          _mergeEventMaps(_manualEvents, _importedEvents), _khalEvents);
+    });
+  }
+
+  Future<void> _updateEvent(
+      CalendarEvent originalEvent, CalendarEvent updatedEvent) async {
+    if (originalEvent.source != EventSource.manual) return;
+
+    if (_isRecurringEvent(originalEvent)) {
+      final masterId = _masterEventId(originalEvent);
+      final masterEvent = _findManualMasterEvent(masterId);
+      if (masterEvent == null) return;
+
+      final newExceptions = List<DateTime>.from(masterEvent.exceptionDates);
+      final alreadyExcluded = newExceptions.any((ex) =>
+          ex.year == originalEvent.startTime.year &&
+          ex.month == originalEvent.startTime.month &&
+          ex.day == originalEvent.startTime.day);
+      if (!alreadyExcluded) {
+        newExceptions.add(originalEvent.startTime);
+      }
+
+      final masterNowHidden = newExceptions.any((ex) =>
+          ex.year == masterEvent.startTime.year &&
+          ex.month == masterEvent.startTime.month &&
+          ex.day == masterEvent.startTime.day);
+
+      _updateMasterEvent(
+        masterEvent,
+        masterEvent.copyWith(
+          exceptionDates: newExceptions,
+          isHidden: masterNowHidden,
+        ),
+      );
+
+      final replacementSig =
+          'manual_edit|$masterId|${originalEvent.startTime.toIso8601String()}|${updatedEvent.title}|${updatedEvent.startTime.toIso8601String()}|${updatedEvent.endTime.toIso8601String()}|${updatedEvent.location ?? ''}|${updatedEvent.description ?? ''}';
+      final replacementEvent = updatedEvent.copyWith(
+        id: 'man_${_fnv1aHex(replacementSig)}',
+        rrule: null,
+        isGenerated: false,
+        exceptionDates: const [],
+        isHidden: false,
+        source: EventSource.manual,
+        sourceId: 'manual',
+      );
+
+      final normalized = _normalizeDate(replacementEvent.startTime);
+      _manualEvents.putIfAbsent(normalized, () => []).add(replacementEvent);
+    } else {
+      _removeManualEventById(originalEvent.id);
+      final normalized = _normalizeDate(updatedEvent.startTime);
+      _manualEvents.putIfAbsent(normalized, () => []).add(updatedEvent);
+
+      if (updatedEvent.rrule != null) {
+        final now = DateTime.now();
+        _generateSafeRecurrences(_manualEvents, updatedEvent, updatedEvent.rrule!,
+            DateTime(now.year - 1, 1, 1), DateTime(now.year + 2, 12, 31));
+      }
+    }
+
+    _selectedDate = _normalizeDate(updatedEvent.startTime);
+    _focusedMonth = _selectedDate;
+    _rebuildMergedEvents();
+    await _saveManualEventsToDisk();
   }
 
   bool _sameEvent(CalendarEvent a, CalendarEvent b) => a.id == b.id;
@@ -1940,6 +2065,9 @@ class _CalendarHomeState extends State<CalendarHome> {
                   itemCount: events.length,
                   itemBuilder: (context, index) => EventCard(
                     event: events[index],
+                    onEdit: events[index].source == EventSource.manual
+                        ? () => _showEditEventDialog(events[index])
+                        : null,
                     onDelete: () =>
                         _deleteEvent(_selectedDate, events[index]),
                   ),
