@@ -4,8 +4,10 @@
 /// i.e. ExpressiveButton, BouncyButton, EventCard, and ViewSwitcher.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'models.dart';
 import 'utils.dart'; // for fmtTime
+import 'package:url_launcher/url_launcher.dart';
 
 // Button based on M3 expressive guidelines
 class ExpressiveButton extends StatefulWidget {
@@ -301,129 +303,226 @@ class _EventCardState extends State<EventCard> {
             color: color.withOpacity(0.15),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: InkWell(
-            onTap: () => setState(() => _expanded = !_expanded),
-            splashColor: color.withOpacity(0.3),
-            highlightColor: color.withOpacity(0.2),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(widget.event.title,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600, fontSize: 16)),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${fmtTime.format(widget.event.startTime)} - ${fmtTime.format(widget.event.endTime)}',
-                              style: TextStyle(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                  fontSize: 13),
-                            ),
-                          ],
-                        ),
-                      ),
-                      AnimatedRotation(
-                        turns: _expanded ? 0.5 : 0,
-                        duration: const Duration(milliseconds: 200),
-                        child: Icon(Icons.expand_more,
-                            color: theme.colorScheme.onSurfaceVariant),
-                      ),
-                    ],
-                  ),
-                  AnimatedCrossFade(
-                    firstChild: const SizedBox(width: double.infinity),
-                    secondChild: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                InkWell(
+                  onTap: () => setState(() => _expanded = !_expanded),
+                  splashColor: color.withOpacity(0.3),
+                  highlightColor: color.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
                       children: [
-                        const SizedBox(height: 16),
-                        Divider(
-                            color: theme.colorScheme.outline.withOpacity(0.1)),
-                        const SizedBox(height: 8),
-                        if (widget.event.location != null &&
-                            widget.event.location!.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Row(
-                              children: [
-                                Icon(Icons.location_on_outlined,
-                                    size: 16, color: color),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                    child: Text(widget.event.location!,
-                                        style: TextStyle(
-                                            color: theme.colorScheme
-                                                .onSurfaceVariant))),
-                              ],
-                            ),
-                          ),
-                        if (widget.event.description != null &&
-                            widget.event.description!.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(Icons.notes, size: 16, color: color),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                    child: Text(widget.event.description!,
-                                        style: TextStyle(
-                                            color: theme.colorScheme
-                                                .onSurfaceVariant))),
-                              ],
-                            ),
-                          ),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: Wrap(
-                            spacing: 8,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (widget.onEdit != null)
-                                TextButton.icon(
-                                  onPressed: widget.onEdit,
-                                  icon: Icon(
-                                    Icons.edit_outlined,
-                                    size: 18,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                  label: Text(
-                                    'Edit',
-                                    style: TextStyle(
-                                      color: theme.colorScheme.primary,
-                                    ),
-                                  ),
-                                ),
-                              TextButton.icon(
-                                onPressed: widget.onDelete,
-                                icon: Icon(Icons.delete_outline,
-                                    size: 18, color: theme.colorScheme.error),
-                                label: Text('Delete',
-                                    style: TextStyle(
-                                        color: theme.colorScheme.error)),
+                              Text(widget.event.title,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600, fontSize: 16)),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${fmtTime.format(widget.event.startTime)} - ${fmtTime.format(widget.event.endTime)}',
+                                style: TextStyle(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                    fontSize: 13),
                               ),
                             ],
                           ),
                         ),
+                        AnimatedRotation(
+                          turns: _expanded ? 0.5 : 0,
+                          duration: const Duration(milliseconds: 200),
+                          child: Icon(Icons.expand_more,
+                              color: theme.colorScheme.onSurfaceVariant),
+                        ),
                       ],
                     ),
-                    crossFadeState: _expanded
-                        ? CrossFadeState.showSecond
-                        : CrossFadeState.showFirst,
-                    duration: const Duration(milliseconds: 200),
                   ),
-                ],
-              ),
+                ),
+                AnimatedCrossFade(
+                  firstChild: const SizedBox(width: double.infinity),
+                  secondChild: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 16),
+                      Divider(
+                          color: theme.colorScheme.outline.withOpacity(0.1)),
+                      const SizedBox(height: 8),
+                      if (widget.event.location != null &&
+                          widget.event.location!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            children: [
+                              Icon(Icons.location_on_outlined,
+                                  size: 16, color: color),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                  child: Text(widget.event.location!,
+                                      style: TextStyle(
+                                          color: theme.colorScheme
+                                              .onSurfaceVariant))),
+                            ],
+                          ),
+                        ),
+                      if (widget.event.description != null &&
+                          widget.event.description!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.notes, size: 16, color: color),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                  child: _EventDescriptionText(
+                                text: widget.event.description!,
+                                style: TextStyle(
+                                    color:
+                                        theme.colorScheme.onSurfaceVariant),
+                                linkStyle: TextStyle(
+                                  color: theme.colorScheme.primary,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              )),
+                            ],
+                          ),
+                        ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Wrap(
+                          spacing: 8,
+                          children: [
+                            if (widget.onEdit != null)
+                              TextButton.icon(
+                                onPressed: widget.onEdit,
+                                icon: Icon(
+                                  Icons.edit_outlined,
+                                  size: 18,
+                                  color: theme.colorScheme.primary,
+                                ),
+                                label: Text(
+                                  'Edit',
+                                  style: TextStyle(
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                              ),
+                            TextButton.icon(
+                              onPressed: widget.onDelete,
+                              icon: Icon(Icons.delete_outline,
+                                  size: 18, color: theme.colorScheme.error),
+                              label: Text('Delete',
+                                  style: TextStyle(
+                                      color: theme.colorScheme.error)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  crossFadeState: _expanded
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
+                  duration: const Duration(milliseconds: 200),
+                ),
+              ],
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _EventDescriptionText extends StatefulWidget {
+  final String text;
+  final TextStyle? style;
+  final TextStyle? linkStyle;
+
+  const _EventDescriptionText({
+    required this.text,
+    this.style,
+    this.linkStyle,
+  });
+
+  @override
+  State<_EventDescriptionText> createState() => _EventDescriptionTextState();
+}
+
+class _EventDescriptionTextState extends State<_EventDescriptionText> {
+  final List<TapGestureRecognizer> _recognizers = [];
+  static final RegExp _urlPattern = RegExp(r'https?:\/\/[^\s]+');
+
+  @override
+  void dispose() {
+    for (final recognizer in _recognizers) {
+      recognizer.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _openUrl(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open link')),
+      );
+    }
+  }
+
+  List<InlineSpan> _buildSpans() {
+    for (final recognizer in _recognizers) {
+      recognizer.dispose();
+    }
+    _recognizers.clear();
+
+    final spans = <InlineSpan>[];
+    int currentIndex = 0;
+
+    for (final match in _urlPattern.allMatches(widget.text)) {
+      if (match.start > currentIndex) {
+        spans.add(TextSpan(
+          text: widget.text.substring(currentIndex, match.start),
+          style: widget.style,
+        ));
+      }
+
+      final url = match.group(0)!;
+      final recognizer = TapGestureRecognizer()..onTap = () => _openUrl(url);
+      _recognizers.add(recognizer);
+
+      spans.add(TextSpan(
+        text: url,
+        style: widget.linkStyle ?? widget.style,
+        recognizer: recognizer,
+      ));
+
+      currentIndex = match.end;
+    }
+
+    if (currentIndex < widget.text.length) {
+      spans.add(TextSpan(
+        text: widget.text.substring(currentIndex),
+        style: widget.style,
+      ));
+    }
+
+    return spans;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SelectableText.rich(
+      TextSpan(children: _buildSpans(), style: widget.style),
     );
   }
 }
