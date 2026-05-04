@@ -375,7 +375,7 @@ class _CalendarHomeState extends State<CalendarHome> {
               if (e.id.isEmpty) {
                 // If an old JSON file somehow has no ids,
                 final sig =
-                    '${sourceId}|${e.title}|${e.startTime.toIso8601String()}|${e.endTime.toIso8601String()}|${e.location ?? ""}|${e.description ?? ""}';
+                    '${sourceId}|${e.title}|${e.startTime.toIso8601String()}|${e.endTime.toIso8601String()}|${e.location ?? ""}';
                 final fixed = CalendarEvent(
                   id: 'imp_${_fnv1aHex(sig)}',
                   title: e.title,
@@ -631,10 +631,11 @@ class _CalendarHomeState extends State<CalendarHome> {
               minViewable: minViewable,
               maxDate: maxDate,
             );
-            parsed.forEach((date, list) {
-              events.putIfAbsent(date, () => []);
-              events[date]!.addAll(list);
-            });
+            for (final list in parsed.values) {
+              for (final event in list) {
+                _addEventToMap(events, event.startTime, event);
+              }
+            }
           } catch (_) {}
         }
       }
@@ -1376,13 +1377,16 @@ class _CalendarHomeState extends State<CalendarHome> {
     String? currentLocation;
     String? currentDescription;
     String? currentUid;
+    DateTime? currentRecurrenceId;
     String? rrule;
-    
-    List<DateTime> currentExDates = []; //
+
+    List<DateTime> currentExDates = [];
     bool inEvent = false;
 
     // Deterministic disambiguation
     final sigCounts = <String, int>{};
+    final recurrenceOverridesByUid = <String, Set<DateTime>>{};
+    final recurringMasters = <({CalendarEvent event, String? uid})>[];
 
     final now = DateTime.now();
     final localMin = minViewable ?? DateTime(now.year - 1, 1, 1);
@@ -1397,18 +1401,26 @@ class _CalendarHomeState extends State<CalendarHome> {
         currentLocation = null;
         currentDescription = null;
         currentUid = null;
+        currentRecurrenceId = null;
         rrule = null;
-        
-        // RESET IT FOR EVERY NEW EVENT
-        currentExDates = []; 
-        
+
+        currentExDates = [];
       } else if (line == 'END:VEVENT' && inEvent) {
         if (currentSummary != null && currentStart != null) {
           final endTime =
               currentEnd ?? currentStart!.add(const Duration(hours: 1));
 
-          final signature =
-              '${sourceId ?? source.name}|${currentUid ?? ""}|${currentSummary!}|${currentStart!.toIso8601String()}|${endTime.toIso8601String()}|${currentLocation ?? ""}|${currentDescription ?? ""}';
+          final uid = currentUid;
+          final recurrenceId = currentRecurrenceId;
+          if (uid != null && recurrenceId != null) {
+            recurrenceOverridesByUid
+                .putIfAbsent(uid, () => <DateTime>{})
+                .add(recurrenceId);
+          }
+
+          final signature = uid != null && uid.isNotEmpty
+              ? '${sourceId ?? source.name}|$uid'
+              : '${sourceId ?? source.name}|${currentSummary!}|${currentStart!.toIso8601String()}|${endTime.toIso8601String()}|${currentLocation ?? ""}';
           final baseHash = _fnv1aHex(signature);
 
           final seen = (sigCounts[baseHash] ?? 0) + 1;
@@ -1442,9 +1454,8 @@ class _CalendarHomeState extends State<CalendarHome> {
             _addEventToMap(events, currentStart!, baseEvent);
           }
 
-          if (rrule != null) {
-            _generateSafeRecurrences(
-                events, baseEvent, rrule!, localMin, localMax);
+          if (rrule != null && recurrenceId == null) {
+            recurringMasters.add((event: baseEvent, uid: uid));
           }
         }
         inEvent = false;
@@ -1469,28 +1480,39 @@ class _CalendarHomeState extends State<CalendarHome> {
                 .replaceAll('\\;', ';');
           } else if (keyPart.startsWith('UID')) {
             currentUid = value;
+          } else if (keyPart.startsWith('RECURRENCE-ID')) {
+            currentRecurrenceId = _parseStrictDate(value);
           } else if (keyPart.startsWith('RRULE')) {
             final val = value.trim();
             if (val.isNotEmpty) rrule = val;
-          }
-          
-          // PARSE THE EXDATE LINE
-          else if (keyPart.startsWith('EXDATE')) { 
-             // If keyPart has parameters (like ;TZID=...), value is just the date.
-             final datePart = value.trim();
-             final dt = _parseStrictDate(datePart);
-             if (dt != null) currentExDates.add(dt);
+          } else if (keyPart.startsWith('EXDATE')) {
+            final dt = _parseStrictDate(value.trim());
+            if (dt != null) currentExDates.add(dt);
           }
         }
       }
     }
+
+    for (final master in recurringMasters) {
+      _generateSafeRecurrences(
+        events,
+        master.event,
+        master.event.rrule!,
+        localMin,
+        localMax,
+        skipStarts:
+            master.uid == null ? null : recurrenceOverridesByUid[master.uid],
+      );
+    }
+
     return events;
   }
 
   void _addEventToMap(Map<DateTime, List<CalendarEvent>> events, DateTime start,
       CalendarEvent event) {
     final date = DateTime(start.year, start.month, start.day);
-    events.putIfAbsent(date, () => []).add(event);
+    final dayEvents = events.putIfAbsent(date, () => []);
+    if (!dayEvents.any((e) => e.id == event.id)) dayEvents.add(event);
   }
 
   DateTime? _parseStrictDate(String value) {
@@ -1547,8 +1569,9 @@ class _CalendarHomeState extends State<CalendarHome> {
     CalendarEvent original,
     String rrule,
     DateTime minViewable,
-    DateTime maxDate,
-  ) {
+    DateTime maxDate, {
+    Set<DateTime>? skipStarts,
+  }) {
     // Parse RRULE
     final parts = rrule.split(';');
     final map = <String, String>{};
@@ -1666,6 +1689,11 @@ class _CalendarHomeState extends State<CalendarHome> {
         generatedCount++;
 
         if (isExcluded) continue;
+
+        if (skipStarts != null &&
+            skipStarts.any((d) => d.isAtSameMomentAs(start))) {
+          continue;
+        }
 
         if (start.isAfter(minViewable) && start.isBefore(maxDate)) {
           // Skip if it's the exact original instance
