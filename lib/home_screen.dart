@@ -9,7 +9,6 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart'; // For LineSplitter
 
 import 'models.dart';
@@ -40,8 +39,6 @@ class _CalendarHomeState extends State<CalendarHome> {
   CalendarViewMode _viewMode = CalendarViewMode.month; // Default view (month)
 
   Map<DateTime, List<CalendarEvent>> _events = {};
-  Map<DateTime, List<CalendarEvent>> _manualEvents = {};
-  Map<DateTime, List<CalendarEvent>> _importedEvents = {};
   Map<DateTime, List<CalendarEvent>> _khalEvents = {};
 
   WeatherData? _weather;
@@ -49,43 +46,9 @@ class _CalendarHomeState extends State<CalendarHome> {
   String? _errorMessage;
   WeatherUnit _weatherUnit = WeatherUnit.celsius;
 
-  bool _khalConnected = false;
-  bool _khalEnabledByUser = false;
   // At Startup (the default scroll position)
   final ScrollController _weekScrollController =
       ScrollController(initialScrollOffset: 520); // 9 AM = 9 * 60
-
-  // HELPER FUNCTION 
-
-  void _updateMasterEvent(CalendarEvent oldMaster, CalendarEvent newMaster) {
-    // Find where the master lives in the map
-    final masterDate = DateTime(oldMaster.startTime.year,
-        oldMaster.startTime.month, oldMaster.startTime.day);
-
-    if (_manualEvents[masterDate] != null) {
-      final index =
-          _manualEvents[masterDate]!.indexWhere((e) => e.id == oldMaster.id);
-      if (index != -1) {
-        _manualEvents[masterDate]![index] = newMaster;
-      }
-    }
-
-    // Clear all generated instances of this event from memory
-    _manualEvents.forEach((d, list) {
-      list.removeWhere((e) => e.id.startsWith('${oldMaster.id}_r'));
-    });
-
-    // Regenerate with new rules
-    final now = DateTime.now();
-    if (newMaster.rrule != null) {
-      _generateSafeRecurrences(
-          _manualEvents,
-          newMaster,
-          newMaster.rrule!,
-          DateTime(now.year - 1),
-          DateTime(now.year + 2));
-    }
-  }
 
   @override
   void initState() {
@@ -119,30 +82,16 @@ class _CalendarHomeState extends State<CalendarHome> {
 
   Directory _baseDir() =>
       Directory(_joinPath([_homeDir(), 'Documents', 'EverCal']));
-  Directory _manualDir() => Directory(_joinPath([_baseDir().path, 'manual']));
-  Directory _importsDir() => Directory(_joinPath([_baseDir().path, 'imports']));
-  File _manualFile() => File(_joinPath([_manualDir().path, 'manual.ics']));
   File _settingsFile() => File(_joinPath([_baseDir().path, 'settings.json']));
 
   Future<void> _ensureDirs() async {
     if (!await _baseDir().exists()) await _baseDir().create(recursive: true);
-    if (!await _manualDir().exists()) {
-      await _manualDir().create(recursive: true);
-    }
-    if (!await _importsDir().exists()) {
-      await _importsDir().create(recursive: true);
-    }
   }
 
   String _basename(String path) {
     final sep = Platform.pathSeparator;
     final parts = path.split(sep);
     return parts.isEmpty ? path : parts.last;
-  }
-
-  String _sanitizeFilename(String name) {
-    final bad = RegExp(r'[\\/:*?"<>|]');
-    return name.replaceAll(bad, '_').trim();
   }
 
   Future<Map<String, dynamic>> _readSettings() async {
@@ -341,82 +290,13 @@ class _CalendarHomeState extends State<CalendarHome> {
     try {
       await _ensureDirs();
 
-      final settings = await _readSettings();
-      _khalEnabledByUser = settings['khalEnabled'] == true;
-
-      // Manual (ICS)
-      _manualEvents = {};
-      final mFile = _manualFile();
-      if (await mFile.exists()) {
-        final content = await mFile.readAsString();
-        _manualEvents =
-            _parseICS(content, source: EventSource.manual, sourceId: 'manual');
-      }
-
-      // Imports (JSON)
-      _importedEvents = {};
-      final iDir = _importsDir();
-      if (await iDir.exists()) {
-        final files =
-            await iDir.list(recursive: false, followLinks: false).toList();
-        for (final ent in files) {
-          if (ent is! File) continue;
-          if (!ent.path.toLowerCase().endsWith('.json')) continue;
-
-          try {
-            final content = await ent.readAsString();
-            final List<dynamic> rawList = json.decode(content);
-            final sourceId = _basename(ent.path);
-
-            final loadedMap = <DateTime, List<CalendarEvent>>{};
-            for (final item in rawList) {
-              if (item is! Map<String, dynamic>) continue;
-              final e = CalendarEvent.fromJson(item, sourceId);
-              if (e.id.isEmpty) {
-                // If an old JSON file somehow has no ids,
-                final sig =
-                    '${sourceId}|${e.title}|${e.startTime.toIso8601String()}|${e.endTime.toIso8601String()}|${e.location ?? ""}';
-                final fixed = CalendarEvent(
-                  id: 'imp_${_fnv1aHex(sig)}',
-                  title: e.title,
-                  startTime: e.startTime,
-                  endTime: e.endTime,
-                  location: e.location,
-                  description: e.description,
-                  source: e.source,
-                  sourceId: e.sourceId,
-                );
-                final date = DateTime(fixed.startTime.year,
-                    fixed.startTime.month, fixed.startTime.day);
-                loadedMap.putIfAbsent(date, () => []).add(fixed);
-              } else {
-                final date = DateTime(
-                    e.startTime.year, e.startTime.month, e.startTime.day);
-                loadedMap.putIfAbsent(date, () => []).add(e);
-              }
-            }
-
-            _importedEvents = _mergeEventMaps(_importedEvents, loadedMap);
-          } catch (_) {}
-        }
-      }
-
-      // Khal
       _khalEvents = {};
-      bool khalConnectedNow = false;
-      if (_khalEnabledByUser) {
-        khalConnectedNow = await _verifyKhalConnection();
-        if (khalConnectedNow) {
-          _khalEvents = await _loadKhalEventsFromVdir();
-        } else {
-          _khalEnabledByUser = false;
-          await _writeSettings({'khalEnabled': false});
-        }
+      final khalConnectedNow = await _verifyKhalConnection();
+      if (khalConnectedNow) {
+        _khalEvents = await _loadKhalEventsFromVdir();
       }
-      _khalConnected = khalConnectedNow;
 
-      _events = _mergeEventMaps(
-          _mergeEventMaps(_manualEvents, _importedEvents), _khalEvents);
+      _events = _khalEvents;
 
       setState(() {
         _isLoading = false;
@@ -436,42 +316,6 @@ class _CalendarHomeState extends State<CalendarHome> {
       final list = List<CalendarEvent>.of(e.value);
       list.sort((x, y) => x.startTime.compareTo(y.startTime));
       out[e.key] = list;
-    }
-    return out;
-  }
-
-  // The UI sorts events 
-  Map<DateTime, List<CalendarEvent>> _mergeEventMaps(
-    Map<DateTime, List<CalendarEvent>> a,
-    Map<DateTime, List<CalendarEvent>> b,
-  ) {
-    if (a.isEmpty) return b;
-    if (b.isEmpty) return a;
-
-    final out = <DateTime, List<CalendarEvent>>{};
-
-    // Add all from A
-    for (final e in a.entries) {
-      out[e.key] = List.of(e.value);
-    }
-
-    // Add from B, checking for duplicates
-    for (final e in b.entries) {
-      if (!out.containsKey(e.key)) {
-        out[e.key] = List.of(e.value);
-      } else {
-        final existingList = out[e.key]!;
-        // Create a set of existing IDs for fast lookup
-        final existingIds = existingList.map((evt) => evt.id).toSet();
-        
-        for (final newEvent in e.value) {
-          // Only add if ID doesn't exist in the list
-          if (!existingIds.contains(newEvent.id)) {
-            existingList.add(newEvent);
-            existingIds.add(newEvent.id);
-          }
-        }
-      }
     }
     return out;
   }
@@ -614,20 +458,18 @@ class _CalendarHomeState extends State<CalendarHome> {
         final dir = Directory(calPath);
         if (!await dir.exists()) continue;
 
-        final ents = await dir.list(recursive: false, followLinks: false).toList();
-        // Filter valid files first
-        final validFiles = ents.whereType<File>().where((e) => e.path.toLowerCase().endsWith('.ics'));
+        final ents =
+            await dir.list(recursive: false, followLinks: false).toList();
+        final validFiles = ents
+            .whereType<File>()
+            .where((e) => e.path.toLowerCase().endsWith('.ics'));
 
-        // Parallel read for contents
-        final contents = await Future.wait(validFiles.map((f) => f.readAsString()));
-
-        // Parse in memory
-        for (String content in contents) {
+        for (final file in validFiles) {
           try {
+            final content = await file.readAsString();
             final parsed = _parseICS(
               content,
-              source: EventSource.khal,
-              sourceId: 'khal',
+              sourceId: file.path,
               minViewable: minViewable,
               maxDate: maxDate,
             );
@@ -646,57 +488,66 @@ class _CalendarHomeState extends State<CalendarHome> {
     return events;
   }
 
-  Future<void> _connectToKhal() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-    final ok = await _verifyKhalConnection();
-    if (!ok) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text("You don't have khal or you haven't set it up.")),
-        );
-      }
-      return;
-    }
-    _khalEnabledByUser = true;
-    await _writeSettings({'khalEnabled': true});
-    _khalConnected = true;
-    _khalEvents = await _loadKhalEventsFromVdir();
-    final merged = _mergeEventMaps(
-        _mergeEventMaps(_manualEvents, _importedEvents), _khalEvents);
-    if (mounted) {
-      setState(() {
-        _events = merged;
-        _isLoading = false;
-      });
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Khal connected')));
-    }
+  Future<String?> _defaultKhalCalendarPath() async {
+    final dir = Directory(_localKhalCalendarPath());
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return dir.path;
   }
 
-  Future<void> _refreshKhalConnectionState() async {
-    if (!_khalEnabledByUser) return;
-    final ok = await _verifyKhalConnection();
-    if (!ok) {
-      _khalEnabledByUser = false;
-      _khalConnected = false;
-      _khalEvents = {};
-      await _writeSettings({'khalEnabled': false});
-      final merged = _mergeEventMaps(_manualEvents, _importedEvents);
-      if (mounted) setState(() => _events = merged);
-    }
+  String _localKhalCalendarPath() =>
+      _joinPath([_homeDir(), '.calendars', 'local']);
+
+  bool _isLocalKhalEvent(CalendarEvent event) {
+    final sourceId = event.sourceId;
+    if (sourceId == null) return false;
+
+    final localPath = _localKhalCalendarPath();
+    return sourceId == localPath ||
+        sourceId.startsWith('$localPath${Platform.pathSeparator}');
   }
 
-  // Add / Import Menu
+  String _escapeIcsText(String text) => text
+      .replaceAll('\\', '\\\\')
+      .replaceAll('\n', '\\n')
+      .replaceAll(',', '\\,')
+      .replaceAll(';', '\\;');
+
+  String _eventToIcs(CalendarEvent event) {
+    final buffer = StringBuffer();
+    buffer.writeln(
+        'BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//EverCal Khal Frontend//EN');
+    buffer.writeln('BEGIN:VEVENT');
+    buffer.writeln('UID:${event.id}');
+    buffer.writeln('SUMMARY:${_escapeIcsText(event.title)}');
+    buffer.writeln('DTSTART:${fmtIcsTime.format(event.startTime)}');
+    buffer.writeln('DTEND:${fmtIcsTime.format(event.endTime)}');
+    if (event.location != null && event.location!.isNotEmpty) {
+      buffer.writeln('LOCATION:${_escapeIcsText(event.location!)}');
+    }
+    if (event.description != null && event.description!.isNotEmpty) {
+      buffer.writeln('DESCRIPTION:${_escapeIcsText(event.description!)}');
+    }
+    if (event.rrule != null && event.rrule!.isNotEmpty) {
+      buffer.writeln('RRULE:${event.rrule}');
+    }
+    for (final ex in event.exceptionDates) {
+      buffer.writeln('EXDATE:${fmtIcsTime.format(ex)}');
+    }
+    buffer.writeln('END:VEVENT');
+    buffer.writeln('END:VCALENDAR');
+    return buffer.toString();
+  }
+
+  Future<File?> _writeKhalEvent(CalendarEvent event, {String? path}) async {
+    final targetPath = path ?? event.sourceId;
+    if (targetPath == null || targetPath.isEmpty) return null;
+
+    final file = File(targetPath);
+    await file.writeAsString(_eventToIcs(event));
+    return file;
+  }
 
   Future<void> _showAddMenu() async {
-    await _refreshKhalConnectionState();
     if (!mounted) return;
 
     showModalBottomSheet(
@@ -722,149 +573,19 @@ class _CalendarHomeState extends State<CalendarHome> {
               ),
               const Divider(), //divider
 
-              // Event Tile
               ListTile(
                 leading:
                     Icon(Icons.edit_calendar, color: theme.colorScheme.primary),
-                title: const Text('Add Event Manually'),
+                title: const Text('Add Event'),
                 onTap: () {
                   Navigator.pop(context);
                   _showAddEventDialog();
                 },
               ),
-
-              // Import Tile
-              ListTile(
-                leading: Icon(Icons.file_upload_outlined,
-                    color: theme.colorScheme.secondary),
-                title: const Text('Import ICS File'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Future.microtask(_importICS);
-                },
-              ),
-
-              // View Imports Tile
-              ListTile(
-                leading:
-                    Icon(Icons.folder_open, color: theme.colorScheme.tertiary),
-                title: const Text('View Imports'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _viewImports();
-                },
-              ),
-
-              // Khal Tile
-              ListTile(
-                leading: Icon(
-                  Icons.link,
-                  color: _khalConnected
-                      ? theme.colorScheme.onSurfaceVariant
-                      : theme.colorScheme.primary,
-                ),
-                title:
-                    Text(_khalConnected ? 'Khal connected' : 'Connect to Khal'),
-                enabled: !_khalConnected,
-                onTap: _khalConnected
-                    ? null
-                    : () {
-                        Navigator.pop(context);
-                        _connectToKhal();
-                      },
-              ),
             ],
           ),
         );
       },
-    );
-  }
-
-  Future<void> _viewImports() async {
-    await _ensureDirs();
-    final theme = Theme.of(context);
-    final files =
-        await _importsDir().list(recursive: false, followLinks: false).toList();
-    files.sort(
-        (a, b) => b.statSync().modified.compareTo(a.statSync().modified));
-    final onlyJson = files
-        .where((e) => e is File && e.path.toLowerCase().endsWith('.json'))
-        .toList();
-
-    if (!mounted) return;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: theme.colorScheme.surface,
-      showDragHandle: true,
-      builder: (context) => Container(
-        padding: const EdgeInsets.only(bottom: 24),
-        child: onlyJson.isEmpty
-            ? Padding(
-                padding: const EdgeInsets.all(24),
-                child: Center(
-                  child: Text(
-                    'No Imports',
-                    style: TextStyle(
-                        color: theme.colorScheme.onSurfaceVariant
-                            .withOpacity(0.7)),
-                  ),
-                ),
-              )
-            : ListView.builder(
-                shrinkWrap: true,
-                itemCount: onlyJson.length,
-                itemBuilder: (context, index) {
-                  final ent = onlyJson[index] as File;
-                  final name = _basename(ent.path);
-                  return ListTile(
-                    leading: Icon(Icons.description_outlined,
-                        color: theme.colorScheme.onSurfaceVariant),
-                    title: Text(name,
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                    trailing: IconButton(
-                      icon: Icon(Icons.close, color: theme.colorScheme.error),
-                      onPressed: () async {
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Delete import?'),
-                            content:
-                                Text('This will remove events from:\n$name'),
-                            actions: [
-                              TextButton(
-                                  onPressed: () =>
-                                      Navigator.pop(context, false),
-                                  child: const Text('Cancel')),
-                              FilledButton(
-                                  onPressed: () => Navigator.pop(context, true),
-                                  child: const Text('Delete')),
-                            ],
-                          ),
-                        );
-                        if (confirm == true) {
-                          try {
-                            await ent.delete();
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text('Import deleted')));
-                            }
-                            if (Navigator.canPop(context))
-                              Navigator.pop(context);
-                            await _loadEvents();
-                          } catch (e) {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Failed: $e')));
-                            }
-                          }
-                        }
-                      },
-                    ),
-                  );
-                },
-              ),
-      ),
     );
   }
 
@@ -886,10 +607,10 @@ class _CalendarHomeState extends State<CalendarHome> {
   }
 
   Future<void> _showEditEventDialog(CalendarEvent event) async {
-    if (event.source != EventSource.manual) {
+    if (!_isLocalKhalEvent(event)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Only manual events can be edited right now.')));
+            content: Text('Only local khal events can be edited.')));
       }
       return;
     }
@@ -912,433 +633,96 @@ class _CalendarHomeState extends State<CalendarHome> {
   }
 
   Future<void> _addEvent(DateTime date, CalendarEvent event) async {
-    final normalized = DateTime(date.year, date.month, date.day);
-    
-    // Update In-Memory Map Immediately
-    if (_manualEvents[normalized] == null) _manualEvents[normalized] = [];
-    _manualEvents[normalized]!.add(event);
-
-    // Instant Feedback
-    if (event.rrule != null) {
-      final now = DateTime.now();
-      // Generate repeats for the UI immediately without parsing ICS
-      _generateSafeRecurrences(
-        _manualEvents, 
-        event, 
-        event.rrule!, 
-        DateTime(now.year - 1, 1, 1), 
-        DateTime(now.year + 2, 12, 31)
-      );
+    final calPath = await _defaultKhalCalendarPath();
+    if (calPath == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No khal calendar directory found.')));
+      }
+      return;
     }
 
-    // Update the Main View OPtimistically
-    setState(() {
-      _events = _mergeEventMaps(
-          _mergeEventMaps(_manualEvents, _importedEvents), _khalEvents);
-    });
+    final uid = event.id.startsWith('khal_')
+        ? event.id
+        : 'khal_${_fnv1aHex('${event.title}|'
+            '${event.startTime.toIso8601String()}|'
+            '${event.endTime.toIso8601String()}|'
+            '${DateTime.now().microsecondsSinceEpoch}')}';
+    final filePath = _joinPath([calPath, '$uid.ics']);
+    final khalEvent = event.copyWith(
+      id: uid,
+      sourceId: filePath,
+      isGenerated: false,
+    );
 
-    // Save to disk in background
-    _saveManualEventsToDisk(); 
+    await _writeKhalEvent(khalEvent, path: filePath);
+    await _loadEvents();
   }
 
   DateTime _normalizeDate(DateTime date) =>
       DateTime(date.year, date.month, date.day);
 
-  bool _isRecurringEvent(CalendarEvent event) =>
-      (event.rrule != null && event.rrule!.isNotEmpty) || event.isGenerated;
-
-  String _masterEventId(CalendarEvent event) =>
-      event.id.contains('_r') ? event.id.split('_r')[0] : event.id;
-
-  CalendarEvent? _findManualMasterEvent(String masterId) {
-    for (final list in _manualEvents.values) {
-      try {
-        return list.firstWhere((e) => e.id == masterId && !e.isGenerated);
-      } catch (_) {}
-    }
-    return null;
-  }
-
-  void _removeManualEventById(String id) {
-    final emptyDates = <DateTime>[];
-    for (final entry in _manualEvents.entries) {
-      entry.value.removeWhere((event) => event.id == id);
-      if (entry.value.isEmpty) emptyDates.add(entry.key);
-    }
-    for (final date in emptyDates) {
-      _manualEvents.remove(date);
-    }
-  }
-
-  void _rebuildMergedEvents() {
-    setState(() {
-      _events = _mergeEventMaps(
-          _mergeEventMaps(_manualEvents, _importedEvents), _khalEvents);
-    });
-  }
-
   Future<void> _updateEvent(
       CalendarEvent originalEvent, CalendarEvent updatedEvent) async {
-    if (originalEvent.source != EventSource.manual) return;
-
-    if (_isRecurringEvent(originalEvent)) {
-      final masterId = _masterEventId(originalEvent);
-      final masterEvent = _findManualMasterEvent(masterId);
-      if (masterEvent == null) return;
-
-      final newExceptions = List<DateTime>.from(masterEvent.exceptionDates);
-      final alreadyExcluded = newExceptions.any((ex) =>
-          ex.year == originalEvent.startTime.year &&
-          ex.month == originalEvent.startTime.month &&
-          ex.day == originalEvent.startTime.day);
-      if (!alreadyExcluded) {
-        newExceptions.add(originalEvent.startTime);
-      }
-
-      final masterNowHidden = newExceptions.any((ex) =>
-          ex.year == masterEvent.startTime.year &&
-          ex.month == masterEvent.startTime.month &&
-          ex.day == masterEvent.startTime.day);
-
-      _updateMasterEvent(
-        masterEvent,
-        masterEvent.copyWith(
-          exceptionDates: newExceptions,
-          isHidden: masterNowHidden,
-        ),
-      );
-
-      final replacementSig =
-          'manual_edit|$masterId|${originalEvent.startTime.toIso8601String()}|${updatedEvent.title}|${updatedEvent.startTime.toIso8601String()}|${updatedEvent.endTime.toIso8601String()}|${updatedEvent.location ?? ''}|${updatedEvent.description ?? ''}';
-      final replacementEvent = updatedEvent.copyWith(
-        id: 'man_${_fnv1aHex(replacementSig)}',
-        rrule: null,
-        isGenerated: false,
-        exceptionDates: const [],
-        isHidden: false,
-        source: EventSource.manual,
-        sourceId: 'manual',
-      );
-
-      final normalized = _normalizeDate(replacementEvent.startTime);
-      _manualEvents.putIfAbsent(normalized, () => []).add(replacementEvent);
-    } else {
-      _removeManualEventById(originalEvent.id);
-      final normalized = _normalizeDate(updatedEvent.startTime);
-      _manualEvents.putIfAbsent(normalized, () => []).add(updatedEvent);
-
-      if (updatedEvent.rrule != null) {
-        final now = DateTime.now();
-        _generateSafeRecurrences(_manualEvents, updatedEvent, updatedEvent.rrule!,
-            DateTime(now.year - 1, 1, 1), DateTime(now.year + 2, 12, 31));
-      }
-    }
-
-    _selectedDate = _normalizeDate(updatedEvent.startTime);
-    _focusedMonth = _selectedDate;
-    _rebuildMergedEvents();
-    await _saveManualEventsToDisk();
-  }
-
-  Future<void> _deleteEvent(DateTime date, CalendarEvent event) async {
-    // Khal Events cannot be deleted here (for now)
-    if (event.source == EventSource.khal) {
+    if (!_isLocalKhalEvent(originalEvent)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text(
-                'Khal events cannot be deleted here. Please use khal/vdirsyncer.')));
+            content: Text('This calendar is read-only in EverCal.')));
       }
       return;
     }
 
-    // Check if Recurring
-    bool isRecurring = (event.rrule != null && event.rrule!.isNotEmpty) ||
-        event.isGenerated ||
-        (event.source == EventSource.imported && event.id.contains('_r'));
-
-    String result = 'all'; // Default for non-recurring
-
-    // Show Dialog ONLY if recurring
-    if (isRecurring) {
-      final selection = await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Delete Recurring Event?'),
-          content: const Text('How would you like to delete this event?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, 'cancel'),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, 'one'),
-              child: const Text('This Event Only'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, 'following'),
-              child: const Text('All Following'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, 'all'),
-              style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.error),
-              child: const Text('All Events'),
-            ),
-          ],
-        ),
-      );
-
-      if (selection == 'cancel' || selection == null) return;
-      result = selection;
-    } else {
-      // If not recurring,
-      result = 'one';
+    if (originalEvent.isGenerated) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+                'Editing generated recurring instances is not supported yet.')));
+      }
+      return;
     }
 
-    // MANUAL EVENTS
-    if (event.source == EventSource.manual) {
-      final masterId =
-          event.id.contains('_r') ? event.id.split('_r')[0] : event.id;
-
-      CalendarEvent? masterEvent;
-      for (var list in _manualEvents.values) {
-        try {
-          masterEvent =
-              list.firstWhere((e) => e.id == masterId && !e.isGenerated);
-          break;
-        } catch (_) {}
-      }
-
-      if (masterEvent != null) {
-        if (result == 'one') {
-          // A: THIS EVENT ONLY (with Exception)
-          final newExceptions = List<DateTime>.from(masterEvent.exceptionDates);
-          newExceptions.add(event.startTime);
-
-          // Check if it is hiding the master itself
-          bool masterNowHidden = newExceptions.any((ex) =>
-              ex.year == masterEvent!.startTime.year &&
-              ex.month == masterEvent.startTime.month &&
-              ex.day == masterEvent.startTime.day);
-
-          final updatedMaster = masterEvent.copyWith(
-            exceptionDates: newExceptions,
-            isHidden: masterNowHidden,
-          );
-          _updateMasterEvent(masterEvent, updatedMaster);
-
-        } else if (result == 'following') {
-          // B: ALL FOLLOWING (Truncate)
-          final cutOffDate =
-              event.startTime.subtract(const Duration(seconds: 1));
-          final untillStr = fmtIcsTime.format(cutOffDate);
-
-          String newRrule = masterEvent.rrule ?? "";
-          if (newRrule.contains('UNTIL=')) {
-            newRrule = newRrule.replaceAll(
-                RegExp(r'UNTIL=[^;]+'), 'UNTIL=$untillStr');
-          } else {
-            newRrule += ';UNTIL=$untillStr';
-          }
-          if (newRrule.contains('COUNT=')) {
-            newRrule = newRrule.replaceAll(RegExp(r';?COUNT=[^;]+'), '');
-          }
-
-          final updatedMaster = CalendarEvent(
-            id: masterEvent.id,
-            title: masterEvent.title,
-            startTime: masterEvent.startTime,
-            endTime: masterEvent.endTime,
-            location: masterEvent.location,
-            description: masterEvent.description,
-            source: masterEvent.source,
-            sourceId: masterEvent.sourceId,
-            rrule: newRrule,
-            isGenerated: false,
-            exceptionDates: masterEvent.exceptionDates,
-          );
-          _updateMasterEvent(masterEvent, updatedMaster);
-
-        } else if (result == 'all') {
-          // C: DELETE ALL
-          _manualEvents.forEach((_, list) {
-            list.removeWhere(
-                (e) => e.id == masterId || e.id.startsWith('${masterId}_r'));
-          });
-        }
-      }
-
-      setState(() {
-        _events = _mergeEventMaps(
-            _mergeEventMaps(_manualEvents, _importedEvents), _khalEvents);
-      });
-      _saveManualEventsToDisk();
-    }
-
-    // IMPORTED EVENTS 
-    else if (event.source == EventSource.imported && event.sourceId != null) {
-      final file = File(_joinPath([_importsDir().path, event.sourceId!]));
-      
-      // Identify the group ID (strip the _r suffix)
-      final masterId = event.id.contains('_r') ? event.id.split('_r')[0] : event.id;
-
-      if (await file.exists()) {
-        try {
-          final content = await file.readAsString();
-          final List<dynamic> jsonList = json.decode(content);
-          final List<dynamic> keptList = [];
-          bool listChanged = false;
-
-          for (final item in jsonList) {
-            if (item is! Map<String, dynamic>) continue;
-            
-            final String itemId = item['id'] ?? '';
-            // Determine if this item belongs to the event group
-            final bool isTargetGroup = (itemId == masterId || itemId.startsWith('${masterId}_r'));
-            
-            bool shouldDelete = false;
-
-            if (isTargetGroup) {
-              if (result == 'all') {
-                shouldDelete = true;
-              } else if (result == 'following') {
-                // Parse time to compare
-                final DateTime itemStart = DateTime.parse(item['startTime']);
-                // Delete if it starts on or after the selected instance
-                if (itemStart.isAtSameMomentAs(event.startTime) || itemStart.isAfter(event.startTime)) {
-                  shouldDelete = true;
-                }
-              } else {
-                // 'one' - only exact ID match
-                if (itemId == event.id) {
-                  shouldDelete = true;
-                }
-              }
-            }
-
-            if (shouldDelete) {
-              listChanged = true;
-            } else {
-              keptList.add(item);
-            }
-          }
-
-          if (listChanged) {
-            await file.writeAsString(json.encode(keptList));
-            // Reload events to refresh the UI and Maps completely
-            await _loadEvents(); 
-            
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Imported event(s) deleted')));
-            }
-          }
-        } catch (e) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Error deleting import: $e')));
-          }
-        }
-      }
-    }
+    final path = originalEvent.sourceId;
+    if (path == null || path.isEmpty) return;
+    final khalEvent = updatedEvent.copyWith(
+      id: originalEvent.id,
+      sourceId: path,
+      isGenerated: false,
+    );
+    await _writeKhalEvent(khalEvent, path: path);
+    _selectedDate = _normalizeDate(khalEvent.startTime);
+    _focusedMonth = _selectedDate;
+    await _loadEvents();
   }
 
-
-
-  Future<void> _saveManualEventsToDisk() async {
-    await _ensureDirs();
-    final file = _manualFile();
-    final buffer = StringBuffer();
-    buffer.writeln('BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//EverCal Manual//EN');
-
-    final processedIds = <String>{};
-
-    _manualEvents.forEach((date, events) {
-      for (var event in events) {
-        if (event.source != EventSource.manual) continue;
-        if (event.isGenerated) continue; // SKIP generated instances
-        if (processedIds.contains(event.id)) continue;
-
-        processedIds.add(event.id);
-
-        buffer.writeln('BEGIN:VEVENT');
-        buffer.writeln('UID:${event.id}'); // Save stable ID
-        buffer.writeln('SUMMARY:${event.title}');
-        buffer.writeln('DTSTART:${fmtIcsTime.format(event.startTime)}');
-        buffer.writeln('DTEND:${fmtIcsTime.format(event.endTime)}');
-        if (event.location != null) buffer.writeln('LOCATION:${event.location}');
-        if (event.description != null)
-          buffer.writeln('DESCRIPTION:${event.description}');
-        if (event.rrule != null)
-          buffer.writeln('RRULE:${event.rrule}'); // Save Rule
-          // Exception Dates
-        if (event.exceptionDates.isNotEmpty) {
-          for (final ex in event.exceptionDates) {
-            buffer.writeln('EXDATE:${fmtIcsTime.format(ex)}');
-          }
-        }
-        buffer.writeln('END:VEVENT');
+  Future<void> _deleteEvent(DateTime date, CalendarEvent event) async {
+    if (!_isLocalKhalEvent(event)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('This calendar is read-only in EverCal.')));
       }
-    });
-    buffer.writeln('END:VCALENDAR');
-    await file.writeAsString(buffer.toString());
-  }
+      return;
+    }
 
-  // ICS to JSON [IMPORT]
-  Future<void> _importICS() async {
+    if (event.isGenerated) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+                'Deleting generated recurring instances is not supported yet.')));
+      }
+      return;
+    }
+
+    final path = event.sourceId;
+    if (path == null || path.isEmpty) return;
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['ics'],
-        dialogTitle: 'Import ICS',
-      );
-      if (result == null) {
-        if (mounted)
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('Import cancelled')));
-        return;
-      }
-      final picked = result.files.single;
-      final path = picked.path;
-      if (path == null) return;
-
-      await _ensureDirs();
-      final originalName =
-          _sanitizeFilename(picked.name.isNotEmpty ? picked.name : 'import.ics');
-      final stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-
-      final destName = originalName.toLowerCase().endsWith('.ics')
-          ? '${originalName.substring(0, originalName.length - 4)}_$stamp.json'
-          : '${originalName}_$stamp.json';
-      final destPath = _joinPath([_importsDir().path, destName]);
-
-      final content = await File(path).readAsString();
-
-      final now = DateTime.now();
-      final minView = DateTime(now.year - 5, 1, 1);
-      final maxView = DateTime(now.year + 5, 12, 31);
-
-      final parsedMap = _parseICS(
-        content,
-        source: EventSource.imported,
-        sourceId: destName, // owning file id
-        minViewable: minView,
-        maxDate: maxView,
-      );
-
-      final flatList = parsedMap.values.expand((x) => x).toList();
-      final jsonStr = json.encode(flatList.map((e) => e.toJson()).toList());
-
-      await File(destPath).writeAsString(jsonStr);
-
+      final file = File(path);
+      if (await file.exists()) await file.delete();
       await _loadEvents();
-      if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Import Successful')));
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Import failed: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error deleting khal event: $e')));
+      }
     }
   }
 
@@ -1363,7 +747,6 @@ class _CalendarHomeState extends State<CalendarHome> {
 
   Map<DateTime, List<CalendarEvent>> _parseICS(
     String content, {
-    required EventSource source,
     String? sourceId,
     DateTime? minViewable,
     DateTime? maxDate,
@@ -1419,14 +802,15 @@ class _CalendarHomeState extends State<CalendarHome> {
           }
 
           final signature = uid != null && uid.isNotEmpty
-              ? '${sourceId ?? source.name}|$uid'
-              : '${sourceId ?? source.name}|${currentSummary!}|${currentStart!.toIso8601String()}|${endTime.toIso8601String()}|${currentLocation ?? ""}';
+              ? '${sourceId ?? "khal"}|$uid'
+              : '${sourceId ?? "khal"}|${currentSummary!}|${currentStart!.toIso8601String()}|${endTime.toIso8601String()}|${currentLocation ?? ""}';
           final baseHash = _fnv1aHex(signature);
 
           final seen = (sigCounts[baseHash] ?? 0) + 1;
           sigCounts[baseHash] = seen;
 
-          final baseId = '${source.name}_${sourceId ?? "na"}_${baseHash}_$seen';
+          final baseId =
+              uid != null && uid.isNotEmpty ? uid : 'khal_${baseHash}_$seen';
 
           // Check if the Master Event itself is an exception
           bool isMasterExcluded = currentExDates.any((ex) =>
@@ -1441,7 +825,6 @@ class _CalendarHomeState extends State<CalendarHome> {
             endTime: endTime,
             location: currentLocation,
             description: currentDescription,
-            source: source,
             sourceId: sourceId,
             rrule: rrule,
             isGenerated: false,
@@ -1709,7 +1092,6 @@ class _CalendarHomeState extends State<CalendarHome> {
               endTime: start.add(duration),
               location: original.location,
               description: original.description,
-              source: original.source,
               sourceId: original.sourceId,
               rrule: original.rrule,
               isGenerated: true,
@@ -2091,7 +1473,7 @@ class _CalendarHomeState extends State<CalendarHome> {
                   itemCount: events.length,
                   itemBuilder: (context, index) => EventCard(
                     event: events[index],
-                    onEdit: events[index].source == EventSource.manual
+                    onEdit: _isLocalKhalEvent(events[index])
                         ? () => _showEditEventDialog(events[index])
                         : null,
                     onDelete: () =>

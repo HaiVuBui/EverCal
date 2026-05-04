@@ -4,13 +4,11 @@
 /// This includes Theme settings, Weather units, and the core CalendarEvent class.
 
 import 'package:flutter/material.dart'; // For IconData
-import 'dart:convert';
 
 // Enums
 enum AppThemeSetting { dark, light, rosePineDawn, auto }
 enum WeatherUnit { celsius, fahrenheit, kelvin }
 enum CalendarViewMode { month, week }
-enum EventSource { manual, imported, khal }
 
 class WeatherData {
   final double temp;
@@ -27,8 +25,7 @@ class CalendarEvent {
   final DateTime endTime;
   final String? location;
   final String? description;
-  final EventSource source;
-  final String? sourceId; // For imports, the JSON filename
+  final String? sourceId; // Owning vdir .ics path
   final String? rrule; // Stores "FREQ=YEARLY" etc.
   final bool isGenerated; // True if this is a repeat instance
   final List<DateTime> exceptionDates; // List of dates to skip
@@ -41,7 +38,6 @@ class CalendarEvent {
     required this.endTime,
     this.location,
     this.description,
-    this.source = EventSource.manual,
     this.sourceId,
     this.rrule,
     this.isGenerated = false,
@@ -49,30 +45,6 @@ class CalendarEvent {
     this.isHidden = false, // DEFAULT FALSE
   });
 
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'startTime': startTime.toIso8601String(),
-        'endTime': endTime.toIso8601String(),
-        'location': location,
-        'description': description,
-        'rrule': rrule,
-      };
-
-  factory CalendarEvent.fromJson(Map<String, dynamic> json, String sourceId) {
-    return CalendarEvent(
-      id: (json['id'] ?? '').toString(),
-      title: json['title'] ?? 'No Title',
-      startTime: DateTime.parse(json['startTime']),
-      endTime: DateTime.parse(json['endTime']),
-      location: json['location'],
-      description: json['description'],
-      source: EventSource.imported,
-      sourceId: sourceId,
-      rrule: json['rrule'],
-    );
-  }
-  
   // Helper copyWith
   CalendarEvent copyWith({
     String? id,
@@ -81,7 +53,6 @@ class CalendarEvent {
     DateTime? endTime,
     String? location,
     String? description,
-    EventSource? source,
     String? sourceId,
     String? rrule,
     bool? isGenerated,
@@ -95,7 +66,6 @@ class CalendarEvent {
       endTime: endTime ?? this.endTime,
       location: location ?? this.location,
       description: description ?? this.description,
-      source: source ?? this.source,
       sourceId: sourceId ?? this.sourceId,
       rrule: rrule ?? this.rrule,
       isGenerated: isGenerated ?? this.isGenerated,
