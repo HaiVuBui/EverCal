@@ -1,12 +1,7 @@
-/// dialogs.dart
-///
-/// Contains the dialog widgets used for Location/Weather settings and Adding Events.
-
 import 'package:flutter/material.dart';
 import 'models.dart';
-import 'utils.dart'; // For fmtGridDay
+import 'utils.dart';
 
-// Dialog for Weather Location and Unit settings
 class LocationSettingsDialog extends StatefulWidget {
   final WeatherUnit currentUnit;
   const LocationSettingsDialog({super.key, required this.currentUnit});
@@ -54,7 +49,6 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // CITY INPUT
           TextField(
             controller: controller,
             style: theme.textTheme.bodyLarge,
@@ -81,8 +75,6 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
             autofocus: true,
           ),
           const SizedBox(height: 16),
-
-          // UNIT DROPDOWN LABEL
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 4),
             child: Text(
@@ -93,8 +85,6 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
               ),
             ),
           ),
-
-          // UNIT DROPDOWN
           DropdownButtonFormField<WeatherUnit>(
             value: tempUnit,
             style: theme.textTheme.bodyLarge?.copyWith(
@@ -127,8 +117,6 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
             },
           ),
           const SizedBox(height: 24),
-
-          // RESET BUTTON
           OutlinedButton.icon(
             onPressed: () async {
               Navigator.pop(context, {'useAuto': true, 'unit': tempUnit});
@@ -170,7 +158,6 @@ class _LocationSettingsDialogState extends State<LocationSettingsDialog> {
   }
 }
 
-// Dialog for Adding a New Event
 class AddEventDialog extends StatefulWidget {
   final DateTime initialSelectedDate;
   final String Function(String input) fnv1aHex;
@@ -211,9 +198,9 @@ class _AddEventDialogState extends State<AddEventDialog> {
   bool get _isEditing => widget.existingEvent != null;
   bool get _isSingleOccurrenceEdit =>
       widget.existingEvent != null &&
-      (((widget.existingEvent!.rrule != null &&
-                  widget.existingEvent!.rrule!.isNotEmpty) ||
-              widget.existingEvent!.isGenerated));
+      ((widget.existingEvent!.rrule != null &&
+              widget.existingEvent!.rrule!.isNotEmpty) ||
+          widget.existingEvent!.isGenerated);
 
   @override
   void initState() {
@@ -245,7 +232,6 @@ class _AddEventDialogState extends State<AddEventDialog> {
 
     startDate = DateTime(start.year, start.month, start.day);
     startTime = TimeOfDay(hour: start.hour, minute: start.minute);
-
     endDate = DateTime(end.year, end.month, end.day);
     endTime = TimeOfDay(hour: end.hour, minute: end.minute);
   }
@@ -258,8 +244,7 @@ class _AddEventDialogState extends State<AddEventDialog> {
     super.dispose();
   }
 
-  // Helper for Labels
-  Widget buildLabel(BuildContext context, String text) {
+  Widget _buildLabel(BuildContext context, String text) {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(left: 4, bottom: 6),
@@ -273,7 +258,7 @@ class _AddEventDialogState extends State<AddEventDialog> {
     );
   }
 
-  Future<void> pickDateTime(bool isStart) async {
+  Future<void> _pickDateTime(bool isStart) async {
     final initialDate = isStart ? startDate : endDate;
     final pickedDate = await showDatePicker(
       context: context,
@@ -364,17 +349,14 @@ class _AddEventDialogState extends State<AddEventDialog> {
         textAlign: TextAlign.center,
       ),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-
-      // CONTENT BOX
       content: SizedBox(
-        width: MediaQuery.of(context).size.width * 0.45, // 45% of the window
+        width: MediaQuery.of(context).size.width * 0.45,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // TITLE
-              buildLabel(context, 'Title'),
+              _buildLabel(context, 'Title'),
               TextField(
                 controller: titleController,
                 decoration: inputDecor,
@@ -382,8 +364,6 @@ class _AddEventDialogState extends State<AddEventDialog> {
                 style: const TextStyle(fontSize: 14),
               ),
               const SizedBox(height: 16),
-
-              // ROW: LOCATION + REPEAT
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -391,7 +371,7 @@ class _AddEventDialogState extends State<AddEventDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        buildLabel(context, 'Location'),
+                        _buildLabel(context, 'Location'),
                         TextField(
                           controller: locationController,
                           decoration: inputDecor,
@@ -405,7 +385,7 @@ class _AddEventDialogState extends State<AddEventDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        buildLabel(context, 'Repeat'),
+                        _buildLabel(context, 'Repeat'),
                         DropdownButtonFormField<String>(
                           value: selectedFreq,
                           decoration: inputDecor,
@@ -429,29 +409,24 @@ class _AddEventDialogState extends State<AddEventDialog> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 20),
-              // ROW: STARTS + ENDS
               Row(
                 children: [
                   Expanded(
                     child: _buildDateTimeSelector(
                         context, 'Starts', startDate, startTime,
-                        () => pickDateTime(true)),
+                        () => _pickDateTime(true)),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: _buildDateTimeSelector(
                         context, 'Ends', endDate, endTime,
-                        () => pickDateTime(false)),
+                        () => _pickDateTime(false)),
                   ),
                 ],
               ),
-
               const SizedBox(height: 20),
-
-              // DESCRIPTION
-              buildLabel(context, 'Description'),
+              _buildLabel(context, 'Description'),
               TextField(
                 controller: descriptionController,
                 decoration: inputDecor,

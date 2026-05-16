@@ -1,11 +1,5 @@
-/// models.dart
-///
-/// Contains all data models and enums used throughout the EverCal application.
-/// This includes Theme settings, Weather units, and the core CalendarEvent class.
+import 'package:flutter/material.dart';
 
-import 'package:flutter/material.dart'; // For IconData
-
-// Enums
 enum AppThemeSetting { dark, light, rosePineDawn }
 enum WeatherUnit { celsius, fahrenheit, kelvin }
 enum CalendarViewMode { month, week }
@@ -19,17 +13,17 @@ class WeatherData {
 }
 
 class CalendarEvent {
-  final String id; // stable ID given to each events
+  final String id;
   final String title;
   final DateTime startTime;
   final DateTime endTime;
   final String? location;
   final String? description;
-  final String? sourceId; // Owning vdir .ics path
-  final String? rrule; // Stores "FREQ=YEARLY" etc.
-  final bool isGenerated; // True if this is a repeat instance
-  final List<DateTime> exceptionDates; // List of dates to skip
-  final bool isHidden; // Hides event in a reccuring event (instead of deleting)
+  final String? sourceId;
+  final String? rrule;
+  final bool isGenerated;
+  final List<DateTime> exceptionDates;
+  final bool isHidden;
 
   const CalendarEvent({
     required this.id,
@@ -42,10 +36,9 @@ class CalendarEvent {
     this.rrule,
     this.isGenerated = false,
     this.exceptionDates = const [],
-    this.isHidden = false, // DEFAULT FALSE
+    this.isHidden = false,
   });
 
-  // Helper copyWith
   CalendarEvent copyWith({
     String? id,
     String? title,

@@ -1,14 +1,8 @@
-/// calendar_views.dart
-///
-/// Contains the visual implementations of the Calendar Grids.
-
-
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'utils.dart';
 import 'components.dart';
 
-// Month view
 class MonthView extends StatelessWidget {
   final DateTime focusedMonth;
   final DateTime selectedDate;
@@ -141,7 +135,7 @@ class MonthView extends StatelessWidget {
     );
   }
 }
-// Week View
+
 class WeekView extends StatelessWidget {
   final DateTime focusedMonth;
   final DateTime selectedDate;
@@ -173,7 +167,6 @@ class WeekView extends StatelessWidget {
 
     return Column(
       children: [
-        // HEADER
         Container(
           padding: const EdgeInsets.only(left: timeColWidth, bottom: 4),
           decoration: BoxDecoration(
@@ -240,7 +233,6 @@ class WeekView extends StatelessWidget {
           ),
         ),
 
-        // GRID
         Expanded(
           child: ScrollConfiguration(
             behavior:
@@ -250,7 +242,6 @@ class WeekView extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // TIME COLUMN
                   SizedBox(
                     width: timeColWidth,
                     child: Column(
@@ -276,11 +267,9 @@ class WeekView extends StatelessWidget {
                     ),
                   ),
 
-                  // DAYS COLUMNS + EVENTS
                   Expanded(
                     child: Stack(
                       children: [
-                        // Grid Lines
                         Column(
                           children: List.generate(totalHours, (index) {
                             return Container(
@@ -297,7 +286,6 @@ class WeekView extends StatelessWidget {
                           }),
                         ),
 
-                        // Vertical Dividers
                         Row(
                           children: List.generate(7, (index) {
                             return Expanded(
@@ -316,7 +304,6 @@ class WeekView extends StatelessWidget {
                           }),
                         ),
 
-                        // EVENTS LAYERS
                         ...List.generate(7, (dayIndex) {
                           final dayDate = weekStart.add(Duration(days: dayIndex));
                           final dayEvents = events[DateTime(
@@ -336,10 +323,8 @@ class WeekView extends StatelessWidget {
                                 Expanded(
                                   child: LayoutBuilder(
                                     builder: (context, constraints) {
-                                      // DO NOT render if width is not yet determined
-                                      if (constraints.maxWidth <= 0) {
-                                        return const SizedBox(); 
-                                      }
+                                      if (constraints.maxWidth <= 0)
+                                        return const SizedBox();
                                       return Stack(
                                         children: _buildDayEvents(
                                           dayEvents,
@@ -357,7 +342,6 @@ class WeekView extends StatelessWidget {
                           );
                         }),
 
-                        // CURRENT TIME INDICATOR
                         if (now.isAfter(weekStart) && now.isBefore(weekEnd))
                           _buildCurrentTimeIndicator(
                               now, weekStart, hourHeight, theme),
@@ -383,13 +367,9 @@ class WeekView extends StatelessWidget {
   List<Widget> _buildDayEvents(List<CalendarEvent> events, double hourHeight,
       double colWidth, ThemeData theme) {
     final widgets = <Widget>[];
-    
-    // Filter hidden & Create a copy to sort. 
-    // ndo not sort the original 'events' list in place inside build().
     final visibleEvents = events.where((e) => !e.isHidden).toList()
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
 
-    // Basic overlap detection
     List<List<CalendarEvent>> lanes = [];
 
     for (var event in visibleEvents) {
@@ -408,13 +388,10 @@ class WeekView extends StatelessWidget {
           break;
         }
       }
-      if (!placed) {
-        lanes.add([event]);
-      }
+      if (!placed) lanes.add([event]);
     }
 
     final int totalLanes = lanes.length;
-    // Safety check against divide by zero just in case
     final double eventWidth = totalLanes > 0 ? colWidth / totalLanes : colWidth;
 
     for (int laneIdx = 0; laneIdx < totalLanes; laneIdx++) {
@@ -429,7 +406,7 @@ class WeekView extends StatelessWidget {
         final double height = duration * hourHeight;
 
         final bool isCompact = height < 50 || eventWidth < 60;
-        final color = _getRandomColor(event.title);
+        final color = eventColor(event.title);
 
         widgets.add(Positioned(
           top: top,
@@ -437,9 +414,7 @@ class WeekView extends StatelessWidget {
           width: eventWidth,
           height: height,
           child: BouncyButton(
-            onTap: () {
-              onDateSelected(event.startTime);
-            },
+            onTap: () => onDateSelected(event.startTime),
             child: Padding(
               padding: const EdgeInsets.only(right: 2, bottom: 2),
               child: Container(
@@ -491,22 +466,6 @@ class WeekView extends StatelessWidget {
     }
 
     return widgets;
-  }
-
-  Color _getRandomColor(String title) {
-    const colors = [
-      Color(0xFFE67E80),
-      Color(0xFFE69875),
-      Color(0xFFDBBC7F),
-      Color(0xFFA7C080),
-      Color(0xFF83C092),
-      Color(0xFF7FBBB3),
-      Color(0xFF7FB4CA),
-      Color(0xFF938AA9),
-      Color(0xFFD699B6),
-      Color(0xFF7A8490),
-    ];
-    return colors[title.hashCode.abs() % colors.length];
   }
 
   Widget _buildCurrentTimeIndicator(

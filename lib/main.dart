@@ -1,8 +1,3 @@
-/// main.dart
-///
-/// The entry point of the application.
-/// Configures the MaterialApp, Themes, and the Home Screen.
-
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'dart:convert';
@@ -22,16 +17,11 @@ class MyCalendarApp extends StatefulWidget {
 
 class _MyCalendarAppState extends State<MyCalendarApp> {
   AppThemeSetting _themeSetting = AppThemeSetting.dark;
-  WeatherUnit _weatherUnit = WeatherUnit.celsius;
 
-// ------------------------------------------------------------------------------------------------------------------------------------
-  //  I/O helpers for scope issues
   String _homeDir() => Platform.environment['HOME'] ?? '';
 
-  String _joinPath(List<String> parts) {
-    final sep = Platform.pathSeparator;
-    return parts.where((p) => p.isNotEmpty).join(sep);
-  }
+  String _joinPath(List<String> parts) =>
+      parts.where((p) => p.isNotEmpty).join(Platform.pathSeparator);
 
   Directory _baseDir() =>
       Directory(_joinPath([_homeDir(), 'Documents', 'EverCal']));
@@ -55,8 +45,7 @@ class _MyCalendarAppState extends State<MyCalendarApp> {
       await _settingsFile().writeAsString(json.encode(settings));
     } catch (_) {}
   }
-// ------------------------------------------------------------------------------------------------------------------------------------
-  // Theme states are persistent
+
   @override
   void initState() {
     super.initState();
@@ -66,14 +55,6 @@ class _MyCalendarAppState extends State<MyCalendarApp> {
   Future<void> _initThemeOnBoot() async {
     final settings = await _readSettings();
     final mode = settings['theme_mode'] ?? 'dark';
-    final savedUnit = settings['weather_unit'];
-    if (savedUnit == 'fahrenheit')
-      _weatherUnit = WeatherUnit.fahrenheit;
-    else if (savedUnit == 'kelvin')
-      _weatherUnit = WeatherUnit.kelvin;
-    else
-      _weatherUnit = WeatherUnit.celsius;
-
     if (mode == 'light') {
       setState(() => _themeSetting = AppThemeSetting.light);
     } else if (mode == 'rose_pine_dawn') {
@@ -101,8 +82,6 @@ class _MyCalendarAppState extends State<MyCalendarApp> {
     await _writeSettings(settings);
   }
 
-// ------------------------------------------------------------------------------------------------------------------------------------
- // HELPER: Get Icon based on setting
   IconData get _currentThemeIcon {
     switch (_themeSetting) {
       case AppThemeSetting.dark:
@@ -116,7 +95,6 @@ class _MyCalendarAppState extends State<MyCalendarApp> {
 
   @override
   Widget build(BuildContext context) {
-    // DARK THEME
     final darkTheme = ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
@@ -144,7 +122,6 @@ class _MyCalendarAppState extends State<MyCalendarApp> {
       ),
     );
 
-    // LIGHT THEME
     final lightTheme = ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
@@ -211,7 +188,6 @@ class _MyCalendarAppState extends State<MyCalendarApp> {
       theme: activeTheme,
       home: CalendarHome(
         onThemeToggle: _cycleTheme,
-        isDarkMode: activeTheme.brightness == Brightness.dark,
         currentIcon: _currentThemeIcon,
       ),
     );

@@ -1,15 +1,9 @@
-/// components.dart
-///
-/// Contains reusable UI widgets like buttons, the event card, and the view switcher.
-/// i.e. ExpressiveButton, BouncyButton, EventCard, and ViewSwitcher.
-
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'models.dart';
-import 'utils.dart'; // for fmtTime
+import 'utils.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// Button based on M3 expressive guidelines
 class ExpressiveButton extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
@@ -61,9 +55,7 @@ class _ExpressiveButtonState extends State<ExpressiveButton> {
   @override
   void didUpdateWidget(covariant ExpressiveButton oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.side != widget.side) {
-      _rebuildShapes();
-    }
+    if (oldWidget.side != widget.side) _rebuildShapes();
   }
 
   void _rebuildShapes() {
@@ -71,7 +63,6 @@ class _ExpressiveButtonState extends State<ExpressiveButton> {
       borderRadius: BorderRadius.circular(14),
       side: widget.side,
     );
-
     _morphShape = StarBorder(
       points: 8,
       innerRadiusRatio: 0.85,
@@ -110,7 +101,6 @@ class _ExpressiveButtonState extends State<ExpressiveButton> {
   }
 }
 
-// Bouncy button effect for event cards in week view
 class BouncyButton extends StatefulWidget {
   final Widget child;
   final VoidCallback onTap;
@@ -131,7 +121,7 @@ class _BouncyButtonState extends State<BouncyButton>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 90), // Quick, snappy duration
+      duration: const Duration(milliseconds: 90),
     );
     _scaleAnimation = Tween<double>(begin: 1.0, end: 0.90).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
@@ -219,9 +209,7 @@ class _ViewSwitcherState extends State<ViewSwitcher> {
                 children: [
                   Text(
                     widget.title,
-                    style: titleStyle?.copyWith(
-                      height: 1.0, 
-                    ),
+                    style: titleStyle?.copyWith(height: 1.0),
                   ),
                   Text(
                     widget.subtitle,
@@ -271,26 +259,10 @@ class EventCard extends StatefulWidget {
 class _EventCardState extends State<EventCard> {
   bool _expanded = false;
 
-  Color _getRandomColor(String title) {
-    const colors = [
-      Color(0xFFE67E80), // Red
-      Color(0xFFE69875), // Orange
-      Color(0xFFDBBC7F), // Yellow
-      Color(0xFFA7C080), // Green
-      Color(0xFF83C092), // Mint 
-      Color(0xFF7FBBB3), // Teal
-      Color(0xFF7FB4CA), // Lavender 
-      Color(0xFF938AA9), // Purple
-      Color(0xFFD699B6), // Sakura
-      Color(0xFF7A8490), // Slate
-    ];
-    return colors[title.hashCode.abs() % colors.length];
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = _getRandomColor(widget.event.title);
+    final color = eventColor(widget.event.title);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -383,8 +355,7 @@ class _EventCardState extends State<EventCard> {
                                   child: _EventDescriptionText(
                                 text: widget.event.description!,
                                 style: TextStyle(
-                                    color:
-                                        theme.colorScheme.onSurfaceVariant),
+                                    color: theme.colorScheme.onSurfaceVariant),
                                 linkStyle: TextStyle(
                                   color: theme.colorScheme.primary,
                                   decoration: TextDecoration.underline,
@@ -401,17 +372,11 @@ class _EventCardState extends State<EventCard> {
                             if (widget.onEdit != null)
                               TextButton.icon(
                                 onPressed: widget.onEdit,
-                                icon: Icon(
-                                  Icons.edit_outlined,
-                                  size: 18,
-                                  color: theme.colorScheme.primary,
-                                ),
-                                label: Text(
-                                  'Edit',
-                                  style: TextStyle(
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ),
+                                icon: Icon(Icons.edit_outlined,
+                                    size: 18, color: theme.colorScheme.primary),
+                                label: Text('Edit',
+                                    style: TextStyle(
+                                        color: theme.colorScheme.primary)),
                               ),
                             TextButton.icon(
                               onPressed: widget.onDelete,
@@ -471,7 +436,6 @@ class _EventDescriptionTextState extends State<_EventDescriptionText> {
   Future<void> _openUrl(String url) async {
     final uri = Uri.tryParse(url);
     if (uri == null) return;
-
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -511,10 +475,7 @@ class _EventDescriptionTextState extends State<_EventDescriptionText> {
       ));
 
       if (trailingText.isNotEmpty) {
-        spans.add(TextSpan(
-          text: trailingText,
-          style: widget.style,
-        ));
+        spans.add(TextSpan(text: trailingText, style: widget.style));
       }
 
       currentIndex = match.end;
