@@ -1,12 +1,10 @@
 /// main.dart
 ///
 /// The entry point of the application.
-/// Configures the MaterialApp, Themes, and the FileWatcher for auto-theme.
-/// Binds the Home Screen.
+/// Configures the MaterialApp, Themes, and the Home Screen.
 
 import 'package:flutter/material.dart';
 import 'dart:io';
-import 'dart:async';
 import 'dart:convert';
 import 'models.dart';
 import 'home_screen.dart';
@@ -23,27 +21,9 @@ class MyCalendarApp extends StatefulWidget {
 }
 
 class _MyCalendarAppState extends State<MyCalendarApp> {
-  AppThemeSetting _themeSetting = AppThemeSetting.auto; //Default setting
-  ThemeMode _effectiveThemeMode = ThemeMode.dark; // Default theme
-  StreamSubscription<FileSystemEvent>? _themeFileSubscription;
-  WeatherUnit _weatherUnit = WeatherUnit.celsius; // Default weather unit
+  AppThemeSetting _themeSetting = AppThemeSetting.dark;
+  WeatherUnit _weatherUnit = WeatherUnit.celsius;
 
-  String get _stateFilePath {
-    final home = Platform.environment['HOME'] ?? '';
-    return '$home/.cache/quickshell/theme_mode';
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _initThemeOnBoot();
-  }
-
-  @override
-  void dispose() {
-    _stopWatchingTheme();
-    super.dispose();
-  }
 // ------------------------------------------------------------------------------------------------------------------------------------
   //  I/O helpers for scope issues
   String _homeDir() => Platform.environment['HOME'] ?? '';
@@ -77,11 +57,15 @@ class _MyCalendarAppState extends State<MyCalendarApp> {
   }
 // ------------------------------------------------------------------------------------------------------------------------------------
   // Theme states are persistent
+  @override
+  void initState() {
+    super.initState();
+    _initThemeOnBoot();
+  }
+
   Future<void> _initThemeOnBoot() async {
-    
-    // Check JSON settings first
     final settings = await _readSettings();
-    final mode = settings['theme_mode'] ?? 'auto';
+    final mode = settings['theme_mode'] ?? 'dark';
     final savedUnit = settings['weather_unit'];
     if (savedUnit == 'fahrenheit')
       _weatherUnit = WeatherUnit.fahrenheit;
@@ -90,105 +74,33 @@ class _MyCalendarAppState extends State<MyCalendarApp> {
     else
       _weatherUnit = WeatherUnit.celsius;
 
-    // Load View Mode
-    final savedView = settings['calendar_view'];
-    
     if (mode == 'light') {
-      _applyManualTheme(AppThemeSetting.light, ThemeMode.light);
+      setState(() => _themeSetting = AppThemeSetting.light);
     } else if (mode == 'rose_pine_dawn') {
-      _applyManualTheme(AppThemeSetting.rosePineDawn, ThemeMode.light);
-    } else if (mode == 'dark') {
-      _applyManualTheme(AppThemeSetting.dark, ThemeMode.dark);
+      setState(() => _themeSetting = AppThemeSetting.rosePineDawn);
     } else {
-      // if 'auto'-- defer to the file watcher
-      setState(() => _themeSetting = AppThemeSetting.auto);
-      _startWatchingTheme();
+      setState(() => _themeSetting = AppThemeSetting.dark);
     }
   }
 
-  // Cycle theme: Dark - Light - Rose Pine Dawn - Auto - Dark
+  // Cycle theme: Dark → Light → Rose Pine Dawn → Dark
   Future<void> _cycleTheme() async {
     final settings = await _readSettings();
 
     if (_themeSetting == AppThemeSetting.dark) {
-      _applyManualTheme(AppThemeSetting.light, ThemeMode.light);
+      setState(() => _themeSetting = AppThemeSetting.light);
       settings['theme_mode'] = 'light';
     } else if (_themeSetting == AppThemeSetting.light) {
-      _applyManualTheme(AppThemeSetting.rosePineDawn, ThemeMode.light);
+      setState(() => _themeSetting = AppThemeSetting.rosePineDawn);
       settings['theme_mode'] = 'rose_pine_dawn';
-    } else if (_themeSetting == AppThemeSetting.rosePineDawn) {
-      setState(() => _themeSetting = AppThemeSetting.auto);
-      _startWatchingTheme();
-      settings['theme_mode'] = 'auto';
     } else {
-      _applyManualTheme(AppThemeSetting.dark, ThemeMode.dark);
+      setState(() => _themeSetting = AppThemeSetting.dark);
       settings['theme_mode'] = 'dark';
     }
 
     await _writeSettings(settings);
   }
 
-  void _applyManualTheme(AppThemeSetting setting, ThemeMode mode) {
-    _stopWatchingTheme();
-    setState(() {
-      _themeSetting = setting;
-      _effectiveThemeMode = mode;
-    });
-  }
-
-// Auto Mode (from File Watcher)
-  void _startWatchingTheme() {
-    _readStateFile(); // Read immediately
-// Watch for changes
-    final file = File(_stateFilePath);
-    _themeFileSubscription?.cancel();
-
-    // if state file doesn't exist, fall back to dark (and don't watch)
-    try {
-      if (!file.existsSync()) {
-        if (mounted) setState(() => _effectiveThemeMode = ThemeMode.dark);
-        return;
-      }
-      _themeFileSubscription =
-          file.watch(events: FileSystemEvent.modify).listen((event) async {
-        await Future.delayed(const Duration(milliseconds: 50));
-        if (mounted) _readStateFile();
-      });
-    } catch (_) {
-      if (mounted) setState(() => _effectiveThemeMode = ThemeMode.dark);
-    }
-  }
-
-  void _stopWatchingTheme() {
-    _themeFileSubscription?.cancel();
-    _themeFileSubscription = null;
-  }
-
-  Future<void> _readStateFile() async {
-    try {
-      final file = File(_stateFilePath);
-    
-    // Missing file = dark
-      if (!await file.exists()) {
-        setState(() => _effectiveThemeMode = ThemeMode.dark);
-        return;
-      }
-      final content = await file.readAsString();
-      final trimmed = content.trim().toLowerCase();
-      setState(() {
-        if (trimmed == 'light') {
-          _effectiveThemeMode = ThemeMode.light;
-        } else {
-          // Default to dark for 'dark' or any error
-          _effectiveThemeMode = ThemeMode.dark;
-        }
-      });
-    } catch (_) {
-      // Fail to dark if permissions/path error
-      setState(() => _effectiveThemeMode = ThemeMode.dark);
-    }
-  }
-  
 // ------------------------------------------------------------------------------------------------------------------------------------
  // HELPER: Get Icon based on setting
   IconData get _currentThemeIcon {
@@ -199,8 +111,6 @@ class _MyCalendarAppState extends State<MyCalendarApp> {
         return Icons.light_mode_rounded;
       case AppThemeSetting.rosePineDawn:
         return Icons.palette_rounded;
-      case AppThemeSetting.auto:
-        return Icons.brightness_auto_rounded;
     }
   }
 
@@ -293,8 +203,6 @@ class _MyCalendarAppState extends State<MyCalendarApp> {
       AppThemeSetting.dark => darkTheme,
       AppThemeSetting.light => lightTheme,
       AppThemeSetting.rosePineDawn => rosePineDawnTheme,
-      AppThemeSetting.auto =>
-        _effectiveThemeMode == ThemeMode.dark ? darkTheme : lightTheme,
     };
 
     return MaterialApp(
