@@ -290,7 +290,7 @@ class WeekView extends StatelessWidget {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 4, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: _getRandomColor(e.title)
+                                  color: eventColor(e.title)
                                       .withOpacity(0.5),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
@@ -532,7 +532,7 @@ class WeekView extends StatelessWidget {
         final double height = duration * hourHeight;
 
         final bool isCompact = height < 50 || eventWidth < 60;
-        final color = _getRandomColor(event.title);
+        final color = eventColor(event.title);
 
         widgets.add(Positioned(
           top: top,
@@ -594,22 +594,6 @@ class WeekView extends StatelessWidget {
     }
 
     return widgets;
-  }
-
-  Color _getRandomColor(String title) {
-    const colors = [
-      Color(0xFFE67E80),
-      Color(0xFFE69875),
-      Color(0xFFDBBC7F),
-      Color(0xFFA7C080),
-      Color(0xFF83C092),
-      Color(0xFF7FBBB3),
-      Color(0xFF7FB4CA),
-      Color(0xFF938AA9),
-      Color(0xFFD699B6),
-      Color(0xFF7A8490),
-    ];
-    return colors[title.hashCode.abs() % colors.length];
   }
 
   Widget _buildCurrentTimeIndicator(

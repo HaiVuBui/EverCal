@@ -274,26 +274,10 @@ class EventCard extends StatefulWidget {
 class _EventCardState extends State<EventCard> {
   bool _expanded = false;
 
-  Color _getRandomColor(String title) {
-    const colors = [
-      Color(0xFFE67E80), // Red
-      Color(0xFFE69875), // Orange
-      Color(0xFFDBBC7F), // Yellow
-      Color(0xFFA7C080), // Green
-      Color(0xFF83C092), // Mint 
-      Color(0xFF7FBBB3), // Teal
-      Color(0xFF7FB4CA), // Lavender 
-      Color(0xFF938AA9), // Purple
-      Color(0xFFD699B6), // Sakura
-      Color(0xFF7A8490), // Slate
-    ];
-    return colors[title.hashCode.abs() % colors.length];
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = _getRandomColor(widget.event.title);
+    final color = eventColor(widget.event.title);
 
     final fmt = widget.use24Hour ? fmtTime24 : fmtTime;
     final timeLabel = widget.event.isAllDay
