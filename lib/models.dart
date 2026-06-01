@@ -18,6 +18,48 @@ class WeatherData {
       {required this.temp, required this.description, required this.icon});
 }
 
+class TodoItem {
+  final String id;
+  final String title;
+  final bool isCompleted;
+  final String? linkedEventId;
+  final DateTime createdAt;
+
+  const TodoItem({
+    required this.id,
+    required this.title,
+    this.isCompleted = false,
+    this.linkedEventId,
+    required this.createdAt,
+  });
+
+  TodoItem copyWith({bool? isCompleted}) {
+    return TodoItem(
+      id: id,
+      title: title,
+      isCompleted: isCompleted ?? this.isCompleted,
+      linkedEventId: linkedEventId,
+      createdAt: createdAt,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'isCompleted': isCompleted,
+        if (linkedEventId != null) 'linkedEventId': linkedEventId,
+        'createdAt': createdAt.toIso8601String(),
+      };
+
+  factory TodoItem.fromJson(Map<String, dynamic> json) => TodoItem(
+        id: json['id'] as String,
+        title: json['title'] as String,
+        isCompleted: json['isCompleted'] as bool? ?? false,
+        linkedEventId: json['linkedEventId'] as String?,
+        createdAt: DateTime.parse(json['createdAt'] as String),
+      );
+}
+
 class CalendarEvent {
   final String id;
   final String title;

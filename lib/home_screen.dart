@@ -39,6 +39,8 @@ class _CalendarHomeState extends State<CalendarHome> {
   CalendarViewMode _viewMode = CalendarViewMode.month; // Default view (month)
 
   Map<DateTime, List<CalendarEvent>> _events = {};
+  List<TodoItem> _todos = [];
+  bool _showTodos = false;
 
   WeatherData? _weather;
   bool _isLoading = true;
@@ -60,7 +62,8 @@ class _CalendarHomeState extends State<CalendarHome> {
     super.initState();
     _selectedDate = _normalizeDate(DateTime.now());
     _loadEvents();
-    _loadWeather(); // Reads settings, so check view mode there
+    _loadWeather();
+    _loadTodos(); // Reads settings, so check view mode there
   }
 
   // Stable hash (FNV-1a 32-bit) for deterministic IDs
@@ -87,6 +90,7 @@ class _CalendarHomeState extends State<CalendarHome> {
   Directory _baseDir() =>
       Directory(_joinPath([_homeDir(), 'Documents', 'EverCal']));
   File _settingsFile() => File(_joinPath([_baseDir().path, 'settings.json']));
+  File _todosFile() => File(_joinPath([_baseDir().path, 'todos.json']));
 
   Future<void> _ensureDirs() async {
     if (!await _baseDir().exists()) await _baseDir().create(recursive: true);
@@ -319,6 +323,75 @@ class _CalendarHomeState extends State<CalendarHome> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _loadTodos() async {
+    try {
+      await _ensureDirs();
+      final f = _todosFile();
+      if (!await f.exists()) return;
+      final raw = await f.readAsString();
+      final decoded = json.decode(raw);
+      if (decoded is List) {
+        setState(() {
+          _todos = decoded
+              .whereType<Map<String, dynamic>>()
+              .map(TodoItem.fromJson)
+              .toList();
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveTodos() async {
+    try {
+      await _todosFile()
+          .writeAsString(json.encode(_todos.map((t) => t.toJson()).toList()));
+    } catch (_) {}
+  }
+
+  void _addTodo(String title, String? linkedEventId) {
+    final now = DateTime.now();
+    final id = 'todo_${_fnv1aHex('todo|$title|${now.toIso8601String()}')}';
+    setState(() {
+      _todos.add(TodoItem(
+        id: id,
+        title: title,
+        linkedEventId: linkedEventId,
+        createdAt: now,
+      ));
+    });
+    _saveTodos();
+  }
+
+  void _toggleTodo(String id) {
+    final idx = _todos.indexWhere((t) => t.id == id);
+    if (idx == -1) return;
+    setState(() {
+      _todos[idx] = _todos[idx].copyWith(isCompleted: !_todos[idx].isCompleted);
+    });
+    _saveTodos();
+  }
+
+  void _deleteTodo(String id) {
+    setState(() => _todos.removeWhere((t) => t.id == id));
+    _saveTodos();
+  }
+
+  void _linkTodoEvent(String todoId, String? eventId) {
+    final idx = _todos.indexWhere((t) => t.id == todoId);
+    if (idx == -1) return;
+    final t = _todos[idx];
+    setState(() {
+      _todos[idx] = TodoItem(
+        id: t.id,
+        title: t.title,
+        isCompleted: t.isCompleted,
+        linkedEventId: eventId,
+        createdAt: t.createdAt,
+      );
+    });
+    _saveTodos();
   }
 
   // Khal Utils
@@ -1617,6 +1690,35 @@ class _CalendarHomeState extends State<CalendarHome> {
                     ),
                   ),
 
+                // EVENTS / TODOS TOGGLE
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(
+                        value: false,
+                        label: Text('Events'),
+                        icon: Icon(Icons.event_outlined, size: 16),
+                      ),
+                      ButtonSegment(
+                        value: true,
+                        label: Text('Todos'),
+                        icon: Icon(Icons.checklist_rounded, size: 16),
+                      ),
+                    ],
+                    selected: {_showTodos},
+                    onSelectionChanged: (s) =>
+                        setState(() => _showTodos = s.first),
+                    style: SegmentedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      visualDensity: VisualDensity.compact,
+                      selectedBackgroundColor:
+                          theme.colorScheme.onSurface.withOpacity(0.12),
+                      selectedForegroundColor: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+
                 // WEATHER WIDGET
                 if (_weather != null)
                   Builder(builder: (context) {
@@ -1687,26 +1789,41 @@ class _CalendarHomeState extends State<CalendarHome> {
           ),
         ),
         Expanded(
-          child: events.isEmpty
-              ? Center(
-                  child: Text('No Events',
-                      style: TextStyle(
-                          color: theme.colorScheme.onSurfaceVariant
-                              .withOpacity(0.5))))
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 16),
-                  itemCount: events.length,
-                  itemBuilder: (context, index) => EventCard(
-                    event: events[index],
-                    use24Hour: _use24Hour,
-                    onEdit: _isLocalKhalEvent(events[index])
-                        ? () => _showEditEventDialog(events[index])
-                        : null,
-                    onDelete: () =>
-                        _deleteEvent(_selectedDate, events[index]),
-                  ),
-                ),
+          child: _showTodos
+              ? TodosPanel(
+                  todos: _todos,
+                  dayEvents: events,
+                  allEvents: filteredEvents,
+                  onAdd: _addTodo,
+                  onToggle: _toggleTodo,
+                  onDelete: _deleteTodo,
+                  onLink: _linkTodoEvent,
+                  onJumpToEvent: (event) => setState(() {
+                    _selectedDate = _normalizeDate(event.startTime);
+                    _focusedMonth = _normalizeDate(event.startTime);
+                    _showTodos = false;
+                  }),
+                )
+              : events.isEmpty
+                  ? Center(
+                      child: Text('No Events',
+                          style: TextStyle(
+                              color: theme.colorScheme.onSurfaceVariant
+                                  .withOpacity(0.5))))
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 16),
+                      itemCount: events.length,
+                      itemBuilder: (context, index) => EventCard(
+                        event: events[index],
+                        use24Hour: _use24Hour,
+                        onEdit: _isLocalKhalEvent(events[index])
+                            ? () => _showEditEventDialog(events[index])
+                            : null,
+                        onDelete: () =>
+                            _deleteEvent(_selectedDate, events[index]),
+                      ),
+                    ),
         ),
       ],
     );

@@ -557,3 +557,403 @@ class _EventDescriptionTextState extends State<_EventDescriptionText> {
     );
   }
 }
+
+class TodoCard extends StatelessWidget {
+  final TodoItem todo;
+  final CalendarEvent? linkedEvent;
+  final VoidCallback onToggle;
+  final VoidCallback onDelete;
+  final VoidCallback? onJumpToEvent;
+  final VoidCallback? onAttachEvent;
+  final VoidCallback? onRemoveEvent;
+
+  const TodoCard({
+    super.key,
+    required this.todo,
+    this.linkedEvent,
+    required this.onToggle,
+    required this.onDelete,
+    this.onJumpToEvent,
+    this.onAttachEvent,
+    this.onRemoveEvent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final done = todo.isCompleted;
+
+    return GestureDetector(
+      onSecondaryTapUp: (details) {
+        final box = context.findRenderObject() as RenderBox?;
+        final offset =
+            box?.localToGlobal(details.localPosition) ?? details.globalPosition;
+        showMenu(
+          context: context,
+          position: RelativeRect.fromLTRB(
+              offset.dx, offset.dy, offset.dx + 1, offset.dy + 1),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          items: [
+            if (onAttachEvent != null)
+              PopupMenuItem(
+                onTap: onAttachEvent,
+                child: Row(children: [
+                  Icon(Icons.event_outlined,
+                      size: 16, color: theme.colorScheme.primary),
+                  const SizedBox(width: 10),
+                  Text(linkedEvent != null ? 'Change event' : 'Attach event'),
+                ]),
+              ),
+            if (linkedEvent != null && onRemoveEvent != null)
+              PopupMenuItem(
+                onTap: onRemoveEvent,
+                child: Row(children: [
+                  Icon(Icons.link_off,
+                      size: 16, color: theme.colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 10),
+                  const Text('Remove event'),
+                ]),
+              ),
+            PopupMenuItem(
+              onTap: onDelete,
+              child: Row(children: [
+                Icon(Icons.delete_outline,
+                    size: 16, color: theme.colorScheme.error),
+                const SizedBox(width: 10),
+                Text('Delete',
+                    style: TextStyle(color: theme.colorScheme.error)),
+              ]),
+            ),
+          ],
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Checkbox(
+              value: done,
+              onChanged: (_) => onToggle(),
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text(
+                      todo.title,
+                      style: TextStyle(
+                        decoration: done ? TextDecoration.lineThrough : null,
+                        color: done
+                            ? theme.colorScheme.onSurface.withOpacity(0.4)
+                            : theme.colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                  if (linkedEvent != null)
+                    Builder(builder: (_) {
+                      final color = eventColor(linkedEvent!.title);
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 4, bottom: 2),
+                        child: GestureDetector(
+                          onTap: onJumpToEvent,
+                          child: MouseRegion(
+                            cursor: onJumpToEvent != null
+                                ? SystemMouseCursors.click
+                                : MouseCursor.defer,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: color.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.event_outlined,
+                                      size: 12, color: color),
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      linkedEvent!.title,
+                                      style: TextStyle(
+                                          fontSize: 11, color: color),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class TodosPanel extends StatefulWidget {
+  final List<TodoItem> todos;
+  final List<CalendarEvent> dayEvents;
+  final Map<DateTime, List<CalendarEvent>> allEvents;
+  final Function(String title, String? linkedEventId) onAdd;
+  final Function(String id) onToggle;
+  final Function(String id) onDelete;
+  final Function(CalendarEvent event) onJumpToEvent;
+  final Function(String todoId, String? eventId) onLink;
+
+  const TodosPanel({
+    super.key,
+    required this.todos,
+    required this.dayEvents,
+    required this.allEvents,
+    required this.onAdd,
+    required this.onToggle,
+    required this.onDelete,
+    required this.onJumpToEvent,
+    required this.onLink,
+  });
+
+  @override
+  State<TodosPanel> createState() => _TodosPanelState();
+}
+
+class _TodosPanelState extends State<TodosPanel> {
+  final _controller = TextEditingController();
+  String? _selectedEventId;
+  late Map<String, CalendarEvent> _eventById;
+
+  @override
+  void initState() {
+    super.initState();
+    _eventById = _buildEventMap();
+  }
+
+  @override
+  void didUpdateWidget(TodosPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.allEvents, widget.allEvents)) {
+      _eventById = _buildEventMap();
+    }
+  }
+
+  Map<String, CalendarEvent> _buildEventMap() => {
+        for (final events in widget.allEvents.values)
+          for (final e in events) e.id: e,
+      };
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _showEventPicker(
+      BuildContext context, String todoId) async {
+    if (widget.dayEvents.isEmpty) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+          title: const Text('Attach Event', textAlign: TextAlign.center),
+          contentPadding: const EdgeInsets.fromLTRB(0, 8, 0, 0),
+          content: SizedBox(
+            width: MediaQuery.of(ctx).size.width * 0.4,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: widget.dayEvents.length,
+              itemBuilder: (_, i) {
+                final event = widget.dayEvents[i];
+                return ListTile(
+                  leading: Container(
+                    width: 4,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: eventColor(event.title),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  title: Text(event.title,
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(
+                    event.isAllDay ? 'All day' : fmtTime.format(event.startTime),
+                    style: TextStyle(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontSize: 12),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    widget.onLink(todoId, event.id);
+                  },
+                );
+              },
+            ),
+          ),
+          actionsPadding: EdgeInsets.zero,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _submit() {
+    final title = _controller.text.trim();
+    if (title.isEmpty) return;
+    widget.onAdd(title, _selectedEventId);
+    _controller.clear();
+    setState(() => _selectedEventId = null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final inputDecor = InputDecoration(
+      filled: true,
+      fillColor: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide.none,
+      ),
+      isDense: true,
+    );
+
+    return Column(
+      children: [
+        Expanded(
+          child: widget.todos.isEmpty
+              ? Center(
+                  child: Text(
+                    'No Todos',
+                    style: TextStyle(
+                        color: theme.colorScheme.onSurfaceVariant
+                            .withOpacity(0.5)),
+                  ),
+                )
+              : ListView.builder(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  itemCount: widget.todos.length,
+                  itemBuilder: (context, i) {
+                    final todo = widget.todos[i];
+                    final linked = todo.linkedEventId != null
+                        ? _eventById[todo.linkedEventId]
+                        : null;
+                    return TodoCard(
+                      todo: todo,
+                      linkedEvent: linked,
+                      onToggle: () => widget.onToggle(todo.id),
+                      onDelete: () => widget.onDelete(todo.id),
+                      onJumpToEvent:
+                          linked != null ? () => widget.onJumpToEvent(linked) : null,
+                      onAttachEvent: () =>
+                          _showEventPicker(context, todo.id),
+                      onRemoveEvent: linked != null
+                          ? () => widget.onLink(todo.id, null)
+                          : null,
+                    );
+                  },
+                ),
+        ),
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(
+                  color: theme.colorScheme.outline.withOpacity(0.1)),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.dayEvents.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: DropdownButtonFormField<String?>(
+                    value: widget.dayEvents.any((e) => e.id == _selectedEventId)
+                        ? _selectedEventId
+                        : null,
+                    hint: Text(
+                      'Attach event (optional)',
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: theme.colorScheme.onSurfaceVariant
+                              .withOpacity(0.6)),
+                    ),
+                    decoration: inputDecor,
+                    dropdownColor: theme.colorScheme.surfaceContainerHigh,
+                    style: TextStyle(
+                        fontSize: 13, color: theme.colorScheme.onSurface),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                          value: null, child: Text('None')),
+                      ...widget.dayEvents.map((e) => DropdownMenuItem<String?>(
+                            value: e.id,
+                            child: Text(e.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis),
+                          )),
+                    ],
+                    onChanged: (val) => setState(() => _selectedEventId = val),
+                  ),
+                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      decoration: inputDecor.copyWith(
+                        hintText: 'New todo...',
+                        hintStyle: TextStyle(
+                            color: theme.colorScheme.onSurfaceVariant
+                                .withOpacity(0.5),
+                            fontSize: 14),
+                      ),
+                      style: const TextStyle(fontSize: 14),
+                      onSubmitted: (_) => _submit(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: _submit,
+                    icon:
+                        Icon(Icons.add_circle, color: theme.colorScheme.primary),
+                    padding: EdgeInsets.zero,
+                    constraints:
+                        const BoxConstraints(minWidth: 32, minHeight: 32),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
