@@ -19,17 +19,18 @@ class WeatherData {
 }
 
 class CalendarEvent {
-  final String id; // stable ID given to each events
+  final String id;
   final String title;
   final DateTime startTime;
   final DateTime endTime;
   final String? location;
   final String? description;
-  final String? sourceId; // Owning vdir .ics path
-  final String? rrule; // Stores "FREQ=YEARLY" etc.
-  final bool isGenerated; // True if this is a repeat instance
-  final List<DateTime> exceptionDates; // List of dates to skip
-  final bool isHidden; // Hides event in a reccuring event (instead of deleting)
+  final String? sourceId;
+  final String? rrule;
+  final bool isGenerated;
+  final List<DateTime> exceptionDates;
+  final bool isHidden;
+  final bool isAllDay;
 
   const CalendarEvent({
     required this.id,
@@ -42,10 +43,10 @@ class CalendarEvent {
     this.rrule,
     this.isGenerated = false,
     this.exceptionDates = const [],
-    this.isHidden = false, // DEFAULT FALSE
+    this.isHidden = false,
+    this.isAllDay = false,
   });
 
-  // Helper copyWith
   CalendarEvent copyWith({
     String? id,
     String? title,
@@ -58,6 +59,7 @@ class CalendarEvent {
     bool? isGenerated,
     List<DateTime>? exceptionDates,
     bool? isHidden,
+    bool? isAllDay,
   }) {
     return CalendarEvent(
       id: id ?? this.id,
@@ -71,6 +73,7 @@ class CalendarEvent {
       isGenerated: isGenerated ?? this.isGenerated,
       exceptionDates: exceptionDates ?? this.exceptionDates,
       isHidden: isHidden ?? this.isHidden,
+      isAllDay: isAllDay ?? this.isAllDay,
     );
   }
 }

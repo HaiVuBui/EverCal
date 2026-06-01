@@ -257,11 +257,14 @@ class EventCard extends StatefulWidget {
   final CalendarEvent event;
   final VoidCallback onDelete;
   final VoidCallback? onEdit;
+  final bool use24Hour;
+
   const EventCard({
     super.key,
     required this.event,
     required this.onDelete,
     this.onEdit,
+    this.use24Hour = false,
   });
 
   @override
@@ -292,7 +295,39 @@ class _EventCardState extends State<EventCard> {
     final theme = Theme.of(context);
     final color = _getRandomColor(widget.event.title);
 
-    return Container(
+    final fmt = widget.use24Hour ? fmtTime24 : fmtTime;
+    final timeLabel = widget.event.isAllDay
+        ? 'All day'
+        : '${fmt.format(widget.event.startTime)} – ${fmt.format(widget.event.endTime)}';
+
+    Widget menuRow(IconData icon, String label, Color iconColor) => Row(children: [
+          Icon(icon, size: 16, color: iconColor),
+          const SizedBox(width: 10),
+          Text(label, style: TextStyle(color: iconColor == theme.colorScheme.error ? iconColor : null)),
+        ]);
+
+    return GestureDetector(
+      onSecondaryTapUp: (details) {
+        final box = context.findRenderObject() as RenderBox?;
+        final offset = box?.localToGlobal(details.localPosition) ?? details.globalPosition;
+        showMenu(
+          context: context,
+          position: RelativeRect.fromLTRB(offset.dx, offset.dy, offset.dx + 1, offset.dy + 1),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          items: [
+            if (widget.onEdit != null)
+              PopupMenuItem(
+                onTap: widget.onEdit,
+                child: menuRow(Icons.edit_outlined, 'Edit', theme.colorScheme.primary),
+              ),
+            PopupMenuItem(
+              onTap: widget.onDelete,
+              child: menuRow(Icons.delete_outline, 'Delete', theme.colorScheme.error),
+            ),
+          ],
+        );
+      },
+      child: Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Material(
         color: Colors.transparent,
@@ -326,7 +361,7 @@ class _EventCardState extends State<EventCard> {
                                       fontWeight: FontWeight.w600, fontSize: 16)),
                               const SizedBox(height: 4),
                               Text(
-                                '${fmtTime.format(widget.event.startTime)} - ${fmtTime.format(widget.event.endTime)}',
+                                timeLabel,
                                 style: TextStyle(
                                     color: theme.colorScheme.onSurfaceVariant,
                                     fontSize: 13),
@@ -436,6 +471,7 @@ class _EventCardState extends State<EventCard> {
           ),
         ),
       ),
+    ),
     );
   }
 }

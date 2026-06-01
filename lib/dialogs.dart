@@ -4,7 +4,7 @@
 
 import 'package:flutter/material.dart';
 import 'models.dart';
-import 'utils.dart'; // For fmtGridDay
+import 'utils.dart';
 
 // Dialog for Weather Location and Unit settings
 class LocationSettingsDialog extends StatefulWidget {
@@ -239,7 +239,8 @@ class _AddEventDialogState extends State<AddEventDialog> {
         selectedFreq = match?.group(1)?.toUpperCase() ?? 'NONE';
       }
     } else {
-      start = DateTime(base.year, base.month, base.day, now.hour, 0);
+      final initialHour = base.hour > 0 ? base.hour : now.hour;
+      start = DateTime(base.year, base.month, base.day, initialHour, base.minute);
       end = start.add(const Duration(hours: 1));
     }
 
@@ -502,6 +503,112 @@ class _AddEventDialogState extends State<AddEventDialog> {
             Navigator.pop(context);
           },
           child: Text(_isEditing ? 'Update' : 'Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class SearchDialog extends StatefulWidget {
+  final Map<DateTime, List<CalendarEvent>> events;
+  final ValueChanged<DateTime> onDateSelected;
+
+  const SearchDialog({
+    super.key,
+    required this.events,
+    required this.onDateSelected,
+  });
+
+  @override
+  State<SearchDialog> createState() => _SearchDialogState();
+}
+
+class _SearchDialogState extends State<SearchDialog> {
+  final _controller = TextEditingController();
+  List<(DateTime, CalendarEvent)> _results = [];
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _search(String query) {
+    if (query.trim().isEmpty) {
+      setState(() => _results = []);
+      return;
+    }
+    final q = query.toLowerCase();
+    final found = <(DateTime, CalendarEvent)>[];
+    for (final entry in widget.events.entries) {
+      for (final event in entry.value) {
+        if (event.isHidden) continue;
+        if (event.title.toLowerCase().contains(q) ||
+            (event.location?.toLowerCase().contains(q) ?? false) ||
+            (event.description?.toLowerCase().contains(q) ?? false)) {
+          found.add((entry.key, event));
+        }
+      }
+    }
+    found.sort((a, b) => a.$1.compareTo(b.$1));
+    setState(() => _results = found.take(60).toList());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+      title: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: InputDecoration(
+          hintText: 'Search events…',
+          prefixIcon: Icon(Icons.search, color: theme.colorScheme.onSurfaceVariant),
+          border: InputBorder.none,
+        ),
+        onChanged: _search,
+      ),
+      contentPadding: const EdgeInsets.fromLTRB(0, 8, 0, 0),
+      content: SizedBox(
+        width: MediaQuery.of(context).size.width * 0.45,
+        height: 380,
+        child: _results.isEmpty
+            ? Center(
+                child: Text(
+                  _controller.text.isEmpty ? 'Start typing to search' : 'No results',
+                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                ),
+              )
+            : ListView.builder(
+                itemCount: _results.length,
+                itemBuilder: (context, i) {
+                  final (date, event) = _results[i];
+                  return ListTile(
+                    leading: Container(
+                      width: 4,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    title: Text(event.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(fmtSearchDate.format(date)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      widget.onDateSelected(date);
+                    },
+                  );
+                },
+              ),
+      ),
+      actionsPadding: EdgeInsets.zero,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
         ),
       ],
     );

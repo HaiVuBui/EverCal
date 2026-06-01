@@ -14,6 +14,7 @@ class MonthView extends StatelessWidget {
   final DateTime selectedDate;
   final Map<DateTime, List<CalendarEvent>> events;
   final ValueChanged<DateTime> onDateSelected;
+  final bool weekStartsOnMonday;
 
   const MonthView({
     super.key,
@@ -21,6 +22,7 @@ class MonthView extends StatelessWidget {
     required this.selectedDate,
     required this.events,
     required this.onDateSelected,
+    this.weekStartsOnMonday = false,
   });
 
   @override
@@ -30,8 +32,15 @@ class MonthView extends StatelessWidget {
         DateTime(focusedMonth.year, focusedMonth.month + 1, 0).day;
     final firstDayOfMonth =
         DateTime(focusedMonth.year, focusedMonth.month, 1);
-    final startingWeekday = firstDayOfMonth.weekday % 7;
+
+    final startingWeekday =
+        weekStartOffset(firstDayOfMonth, mondayFirst: weekStartsOnMonday);
+
     final totalCells = ((daysInMonth + startingWeekday) / 7).ceil() * 7;
+
+    final headers = weekStartsOnMonday
+        ? ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+        : ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -50,7 +59,7 @@ class MonthView extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
-                children: ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+                children: headers
                     .map((d) => Expanded(
                           child: Center(
                             child: Text(
@@ -85,7 +94,7 @@ class MonthView extends StatelessWidget {
                   final isToday = date == today;
                   final dayEvents =
                       (events[DateTime(date.year, date.month, date.day)] ??
-                          const []).where((e) => !e.isHidden).toList();
+                          const []).toList();
 
                   return Center(
                     child: ExpressiveButton(
@@ -141,6 +150,7 @@ class MonthView extends StatelessWidget {
     );
   }
 }
+
 // Week View
 class WeekView extends StatelessWidget {
   final DateTime focusedMonth;
@@ -148,6 +158,9 @@ class WeekView extends StatelessWidget {
   final Map<DateTime, List<CalendarEvent>> events;
   final ValueChanged<DateTime> onDateSelected;
   final ScrollController scrollController;
+  final bool weekStartsOnMonday;
+  final bool use24Hour;
+  final ValueChanged<DateTime>? onTimeSlotTapped;
 
   const WeekView({
     super.key,
@@ -156,20 +169,34 @@ class WeekView extends StatelessWidget {
     required this.events,
     required this.onDateSelected,
     required this.scrollController,
+    this.weekStartsOnMonday = false,
+    this.use24Hour = false,
+    this.onTimeSlotTapped,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final now = DateTime.now();
-    final int daysFromMonday = focusedMonth.weekday - 1;
+
+    // Compute week start based on setting
+    final int startOffset =
+        weekStartOffset(focusedMonth, mondayFirst: weekStartsOnMonday);
     final DateTime weekStart =
-        focusedMonth.subtract(Duration(days: daysFromMonday));
+        focusedMonth.subtract(Duration(days: startOffset));
     final DateTime weekEnd = weekStart.add(const Duration(days: 6));
 
     const double hourHeight = 60.0;
     const double timeColWidth = 50.0;
     const int totalHours = 24;
+
+    // Collect all-day events per day once; reuse for banner check + render
+    final allDayByDay = List.generate(7, (i) {
+      final d = weekStart.add(Duration(days: i));
+      final key = DateTime(d.year, d.month, d.day);
+      return (events[key] ?? []).where((e) => e.isAllDay).toList();
+    });
+    final hasAllDay = allDayByDay.any((list) => list.isNotEmpty);
 
     return Column(
       children: [
@@ -240,6 +267,50 @@ class WeekView extends StatelessWidget {
           ),
         ),
 
+        // ALL-DAY BANNER
+        if (hasAllDay)
+          Container(
+            padding: const EdgeInsets.only(left: timeColWidth, top: 4, bottom: 4),
+            decoration: BoxDecoration(
+              border: Border(
+                  bottom: BorderSide(
+                      color: theme.colorScheme.outline.withOpacity(0.1))),
+            ),
+            child: Row(
+              children: List.generate(7, (i) {
+                final allDayEvs = allDayByDay[i];
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 1),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: allDayEvs
+                          .map((e) => Container(
+                                margin: const EdgeInsets.only(bottom: 2),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 4, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: _getRandomColor(e.title)
+                                      .withOpacity(0.5),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  e.title,
+                                  style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ))
+                          .toList(),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+
         // GRID
         Expanded(
           child: ScrollConfiguration(
@@ -262,7 +333,7 @@ class WeekView extends StatelessWidget {
                             child: Padding(
                               padding: const EdgeInsets.only(top: 8.0),
                               child: Text(
-                                _formatHour(hour),
+                                _formatHour(hour, use24Hour: use24Hour),
                                 style: theme.textTheme.labelSmall?.copyWith(
                                   color: theme.colorScheme.onSurface
                                       .withOpacity(0.5),
@@ -316,9 +387,38 @@ class WeekView extends StatelessWidget {
                           }),
                         ),
 
+                        // TIME SLOT TAP LAYER (behind events)
+                        if (onTimeSlotTapped != null)
+                          Row(
+                            children: List.generate(7, (index) {
+                              final dayDate =
+                                  weekStart.add(Duration(days: index));
+                              return Expanded(
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.translucent,
+                                  onTapUp: (details) {
+                                    final hour = (details.localPosition.dy /
+                                            hourHeight)
+                                        .floor()
+                                        .clamp(0, 23);
+                                    final dt = DateTime(
+                                        dayDate.year,
+                                        dayDate.month,
+                                        dayDate.day,
+                                        hour);
+                                    onTimeSlotTapped!.call(dt);
+                                  },
+                                  child: SizedBox(
+                                      height: totalHours * hourHeight),
+                                ),
+                              );
+                            }),
+                          ),
+
                         // EVENTS LAYERS
                         ...List.generate(7, (dayIndex) {
-                          final dayDate = weekStart.add(Duration(days: dayIndex));
+                          final dayDate =
+                              weekStart.add(Duration(days: dayIndex));
                           final dayEvents = events[DateTime(
                                   dayDate.year, dayDate.month, dayDate.day)] ??
                               [];
@@ -332,13 +432,13 @@ class WeekView extends StatelessWidget {
                             bottom: 0,
                             child: Row(
                               children: [
-                                ...List.generate(dayIndex, (_) => const Spacer()),
+                                ...List.generate(
+                                    dayIndex, (_) => const Spacer()),
                                 Expanded(
                                   child: LayoutBuilder(
                                     builder: (context, constraints) {
-                                      // DO NOT render if width is not yet determined
                                       if (constraints.maxWidth <= 0) {
-                                        return const SizedBox(); 
+                                        return const SizedBox();
                                       }
                                       return Stack(
                                         children: _buildDayEvents(
@@ -351,7 +451,8 @@ class WeekView extends StatelessWidget {
                                     },
                                   ),
                                 ),
-                                ...List.generate(6 - dayIndex, (_) => const Spacer()),
+                                ...List.generate(
+                                    6 - dayIndex, (_) => const Spacer()),
                               ],
                             ),
                           );
@@ -373,7 +474,8 @@ class WeekView extends StatelessWidget {
     );
   }
 
-  String _formatHour(int hour) {
+  String _formatHour(int hour, {bool use24Hour = false}) {
+    if (use24Hour) return '${hour.toString().padLeft(2, '0')}:00';
     if (hour == 0) return '12 AM';
     if (hour == 12) return '12 PM';
     if (hour > 12) return '${hour - 12} PM';
@@ -383,10 +485,12 @@ class WeekView extends StatelessWidget {
   List<Widget> _buildDayEvents(List<CalendarEvent> events, double hourHeight,
       double colWidth, ThemeData theme) {
     final widgets = <Widget>[];
-    
-    // Filter hidden & Create a copy to sort. 
-    // ndo not sort the original 'events' list in place inside build().
-    final visibleEvents = events.where((e) => !e.isHidden).toList()
+
+    // Filter all-day (shown in banner) and sort; visibility is already
+    // applied upstream in _filteredEvents.
+    final visibleEvents = events
+        .where((e) => !e.isAllDay)
+        .toList()
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
 
     // Basic overlap detection
@@ -414,7 +518,6 @@ class WeekView extends StatelessWidget {
     }
 
     final int totalLanes = lanes.length;
-    // Safety check against divide by zero just in case
     final double eventWidth = totalLanes > 0 ? colWidth / totalLanes : colWidth;
 
     for (int laneIdx = 0; laneIdx < totalLanes; laneIdx++) {

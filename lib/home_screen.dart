@@ -5,6 +5,7 @@
 /// weather fetching, and layout management.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
@@ -45,6 +46,12 @@ class _CalendarHomeState extends State<CalendarHome> {
   bool _isLoading = true;
   String? _errorMessage;
   WeatherUnit _weatherUnit = WeatherUnit.celsius;
+
+  bool _weekStartsMonday = false;
+  bool _use24Hour = false;
+  Set<String> _hiddenCalendarPaths = {};
+  List<String> _calendarPaths = [];
+  CalendarEvent? _lastDeletedEvent;
 
   // At Startup (the default scroll position)
   final ScrollController _weekScrollController =
@@ -88,9 +95,18 @@ class _CalendarHomeState extends State<CalendarHome> {
     if (!await _baseDir().exists()) await _baseDir().create(recursive: true);
   }
 
+  String _normDir(String path) {
+    final sep = Platform.pathSeparator;
+    var p = path;
+    while (p.length > 1 && p.endsWith(sep)) {
+      p = p.substring(0, p.length - 1);
+    }
+    return p;
+  }
+
   String _basename(String path) {
     final sep = Platform.pathSeparator;
-    final parts = path.split(sep);
+    final parts = _normDir(path).split(sep);
     return parts.isEmpty ? path : parts.last;
   }
 
@@ -112,17 +128,11 @@ class _CalendarHomeState extends State<CalendarHome> {
   }
 
   // Toggle View Mode
-  Future<void> _toggleViewMode() async {
-    setState(() {
-      _viewMode = _viewMode == CalendarViewMode.month
-          ? CalendarViewMode.week
-          : CalendarViewMode.month;
-    });
-
-    final settings = await _readSettings();
-    settings['calendar_view'] = _viewMode.name;
-    await _writeSettings(settings);
-  }
+  Future<void> _toggleViewMode() => _setViewMode(
+        _viewMode == CalendarViewMode.month
+            ? CalendarViewMode.week
+            : CalendarViewMode.month,
+      );
 
   // Weather with configurable temperature units
   Future<void> _loadWeather() async {
@@ -146,6 +156,15 @@ class _CalendarHomeState extends State<CalendarHome> {
         _weatherUnit = WeatherUnit.kelvin;
       } else {
         _weatherUnit = WeatherUnit.celsius;
+      }
+
+      _weekStartsMonday = settings['week_starts_monday'] == true;
+      _use24Hour = settings['use_24hour'] == true;
+
+      final hiddenList = settings['hidden_calendars'];
+      if (hiddenList is List) {
+        _hiddenCalendarPaths =
+            hiddenList.whereType<String>().map(_normDir).toSet();
       }
 
       double? lat;
@@ -438,6 +457,7 @@ class _CalendarHomeState extends State<CalendarHome> {
 
   Future<Map<DateTime, List<CalendarEvent>>> _loadKhalEventsFromVdir() async {
     final events = <DateTime, List<CalendarEvent>>{};
+    final discoveredPaths = <String>[];
     try {
       final cfgFile = await _findKhalConfigFile();
       if (cfgFile == null) return events;
@@ -457,6 +477,7 @@ class _CalendarHomeState extends State<CalendarHome> {
       for (final calPath in expanded) {
         final dir = Directory(calPath);
         if (!await dir.exists()) continue;
+        discoveredPaths.add(_normDir(calPath));
 
         final ents =
             await dir.list(recursive: false, followLinks: false).toList();
@@ -484,6 +505,7 @@ class _CalendarHomeState extends State<CalendarHome> {
       for (final date in events.keys) {
         events[date]!.sort((a, b) => a.startTime.compareTo(b.startTime));
       }
+      _calendarPaths = discoveredPaths;
     } catch (_) {}
     return events;
   }
@@ -554,55 +576,69 @@ class _CalendarHomeState extends State<CalendarHome> {
       context: context,
       showDragHandle: true,
       builder: (context) {
-        // The theme inside the builder so it updates live
-        final theme = Theme.of(context);
-
-        return Container(
-          padding: const EdgeInsets.only(bottom: 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Theme Switch Tile
-              ListTile(
-                leading: Icon(widget.currentIcon,
-                    color: theme.colorScheme.onSurfaceVariant),
-                title: const Text('Switch Theme'),
-                onTap: () {
-                  widget.onThemeToggle();
-                },
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final theme = Theme.of(context);
+            return Container(
+              padding: const EdgeInsets.only(bottom: 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    leading: Icon(widget.currentIcon,
+                        color: theme.colorScheme.onSurfaceVariant),
+                    title: const Text('Switch Theme'),
+                    onTap: widget.onThemeToggle,
+                  ),
+                  const Divider(),
+                  ListTile(
+                    leading: Icon(Icons.edit_calendar,
+                        color: theme.colorScheme.primary),
+                    title: const Text('Add Event'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showAddEventDialog();
+                    },
+                  ),
+                  const Divider(),
+                  SwitchListTile(
+                    secondary: const Icon(Icons.calendar_view_week_outlined),
+                    title: const Text('Week starts on Monday'),
+                    value: _weekStartsMonday,
+                    onChanged: (val) {
+                      setSheetState(() {});
+                      _toggleWeekStart(val);
+                    },
+                  ),
+                  SwitchListTile(
+                    secondary: const Icon(Icons.schedule_outlined),
+                    title: const Text('24-hour time'),
+                    value: _use24Hour,
+                    onChanged: (val) {
+                      setSheetState(() {});
+                      _toggleTimeFormat(val);
+                    },
+                  ),
+                ],
               ),
-              const Divider(), //divider
-
-              ListTile(
-                leading:
-                    Icon(Icons.edit_calendar, color: theme.colorScheme.primary),
-                title: const Text('Add Event'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showAddEventDialog();
-                },
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
   }
 
-  Future<void> _showAddEventDialog() async {
+  Future<void> _showAddEventDialog({DateTime? initialDateTime}) async {
+    final date = initialDateTime ?? _selectedDate;
     await showDialog(
       context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setStateDialog) {
-            return AddEventDialog(
-              initialSelectedDate: _selectedDate,
-              fnv1aHex: _fnv1aHex,
-              onSave: _addEvent,
-            );
-          },
-        );
-      },
+      builder: (context) => StatefulBuilder(
+        builder: (context, _) => AddEventDialog(
+          initialSelectedDate: date,
+          fnv1aHex: _fnv1aHex,
+          onSave: _addEvent,
+        ),
+      ),
     );
   }
 
@@ -615,20 +651,110 @@ class _CalendarHomeState extends State<CalendarHome> {
       return;
     }
 
+    if (event.isGenerated) {
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+          title: const Text('Edit recurring event', textAlign: TextAlign.center),
+          content: const Text('Which events do you want to edit?'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            OutlinedButton(
+                onPressed: () => Navigator.pop(context, 'all'),
+                child: const Text('All events')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, 'this'),
+                child: const Text('This event')),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      if (choice == 'this') await _editThisOccurrence(event);
+      if (choice == 'all') await _editAllOccurrences(event);
+      return;
+    }
+
     await showDialog(
       context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setStateDialog) {
-            return AddEventDialog(
-              initialSelectedDate: event.startTime,
-              existingEvent: event,
-              fnv1aHex: _fnv1aHex,
-              onSave: (date, updatedEvent) => _updateEvent(event, updatedEvent),
-            );
-          },
-        );
-      },
+      builder: (context) => StatefulBuilder(
+        builder: (context, _) => AddEventDialog(
+          initialSelectedDate: event.startTime,
+          existingEvent: event,
+          fnv1aHex: _fnv1aHex,
+          onSave: (date, updatedEvent) => _updateEvent(event, updatedEvent),
+        ),
+      ),
+    );
+  }
+
+  CalendarEvent? _findMasterEvent(String sourceId) {
+    for (final evts in _events.values) {
+      for (final e in evts) {
+        if (e.sourceId == sourceId && !e.isGenerated) return e;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _editThisOccurrence(CalendarEvent instance) async {
+    CalendarEvent? edited;
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, _) => AddEventDialog(
+          initialSelectedDate: instance.startTime,
+          existingEvent: instance.copyWith(rrule: null, isGenerated: false),
+          fnv1aHex: _fnv1aHex,
+          onSave: (_, ev) => edited = ev,
+        ),
+      ),
+    );
+    if (edited == null) return;
+
+    // Add EXDATE to master ICS
+    final masterPath = instance.sourceId;
+    if (masterPath != null) {
+      try {
+        final f = File(masterPath);
+        if (await f.exists()) {
+          final content = await f.readAsString();
+          final exdate = 'EXDATE:${fmtIcsTime.format(instance.startTime)}';
+          await f.writeAsString(
+              content.replaceFirst('END:VEVENT', '$exdate\nEND:VEVENT'));
+        }
+      } catch (_) {}
+    }
+
+    // Write new standalone event
+    await _addEvent(edited!.startTime, edited!.copyWith(
+      rrule: null,
+      exceptionDates: const [],
+      isGenerated: false,
+    ));
+  }
+
+  Future<void> _editAllOccurrences(CalendarEvent instance) async {
+    final master = _findMasterEvent(instance.sourceId ?? '');
+    if (master == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not find the master event.')));
+      }
+      return;
+    }
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, _) => AddEventDialog(
+          initialSelectedDate: master.startTime,
+          existingEvent: master,
+          fnv1aHex: _fnv1aHex,
+          onSave: (date, updated) => _updateEvent(master, updated),
+        ),
+      ),
     );
   }
 
@@ -717,13 +843,123 @@ class _CalendarHomeState extends State<CalendarHome> {
     try {
       final file = File(path);
       if (await file.exists()) await file.delete();
+      _lastDeletedEvent = event;
       await _loadEvents();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('Event deleted'),
+          action: SnackBarAction(label: 'Undo', onPressed: _undoDelete),
+          duration: const Duration(seconds: 5),
+        ));
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Error deleting khal event: $e')));
       }
     }
+  }
+
+  Future<void> _undoDelete() async {
+    final event = _lastDeletedEvent;
+    if (event == null) return;
+    _lastDeletedEvent = null;
+    final path = event.sourceId;
+    if (path == null || path.isEmpty) return;
+    await _writeKhalEvent(event, path: path);
+    await _loadEvents();
+  }
+
+  // Calendar visibility helpers
+
+  String _calendarDirForEvent(CalendarEvent event) {
+    final src = event.sourceId;
+    if (src == null) return '';
+    return _normDir(File(src).parent.path);
+  }
+
+  Map<DateTime, List<CalendarEvent>> get _filteredEvents {
+    final result = <DateTime, List<CalendarEvent>>{};
+    for (final entry in _events.entries) {
+      final filtered = entry.value
+          .where((e) =>
+              !e.isHidden &&
+              (_hiddenCalendarPaths.isEmpty ||
+                  !_hiddenCalendarPaths.contains(_calendarDirForEvent(e))))
+          .toList();
+      if (filtered.isNotEmpty) result[entry.key] = filtered;
+    }
+    return result;
+  }
+
+  Future<void> _patchSetting(String key, dynamic value) async {
+    final settings = await _readSettings();
+    settings[key] = value;
+    await _writeSettings(settings);
+  }
+
+  Future<void> _toggleCalendar(String path, bool hide) async {
+    setState(() {
+      if (hide) _hiddenCalendarPaths.add(path);
+      else _hiddenCalendarPaths.remove(path);
+    });
+    await _patchSetting('hidden_calendars', _hiddenCalendarPaths.toList());
+  }
+
+  // Navigation helpers
+
+  void _goToToday() {
+    final now = DateTime.now();
+    setState(() {
+      _selectedDate = DateTime(now.year, now.month, now.day);
+      _focusedMonth = _selectedDate;
+    });
+  }
+
+  void _shiftPeriod(int dir) {
+    setState(() {
+      if (_viewMode == CalendarViewMode.month) {
+        _focusedMonth = DateTime(_focusedMonth.year, _focusedMonth.month + dir);
+      } else {
+        _focusedMonth = _focusedMonth.add(Duration(days: 7 * dir));
+      }
+    });
+  }
+
+  void _prevPeriod() => _shiftPeriod(-1);
+  void _nextPeriod() => _shiftPeriod(1);
+
+  Future<void> _setViewMode(CalendarViewMode mode) async {
+    if (_viewMode == mode) return;
+    setState(() => _viewMode = mode);
+    await _patchSetting('calendar_view', mode.name);
+  }
+
+  // Settings toggles
+
+  Future<void> _toggleWeekStart(bool value) async {
+    setState(() => _weekStartsMonday = value);
+    await _patchSetting('week_starts_monday', value);
+  }
+
+  Future<void> _toggleTimeFormat(bool value) async {
+    setState(() => _use24Hour = value);
+    await _patchSetting('use_24hour', value);
+  }
+
+  // Search
+
+  Future<void> _showSearchDialog() async {
+    await showDialog(
+      context: context,
+      builder: (context) => SearchDialog(
+        events: _events,
+        onDateSelected: (date) => setState(() {
+          _selectedDate = date;
+          _focusedMonth = date;
+        }),
+      ),
+    );
   }
 
   // ICS Parsing
@@ -762,6 +998,7 @@ class _CalendarHomeState extends State<CalendarHome> {
     String? currentUid;
     DateTime? currentRecurrenceId;
     String? rrule;
+    bool currentIsAllDay = false;
 
     List<DateTime> currentExDates = [];
     bool inEvent = false;
@@ -786,6 +1023,7 @@ class _CalendarHomeState extends State<CalendarHome> {
         currentUid = null;
         currentRecurrenceId = null;
         rrule = null;
+        currentIsAllDay = false;
 
         currentExDates = [];
       } else if (line == 'END:VEVENT' && inEvent) {
@@ -829,7 +1067,8 @@ class _CalendarHomeState extends State<CalendarHome> {
             rrule: rrule,
             isGenerated: false,
             exceptionDates: currentExDates,
-            isHidden: isMasterExcluded, // MARK HIDDEN IF EXCLUDED
+            isHidden: isMasterExcluded,
+            isAllDay: currentIsAllDay,
           );
 
           if (!baseEvent.startTime.isBefore(localMin) &&
@@ -850,8 +1089,10 @@ class _CalendarHomeState extends State<CalendarHome> {
 
           if (keyPart.startsWith('SUMMARY'))
             currentSummary = value;
-          else if (keyPart.startsWith('DTSTART'))
+          else if (keyPart.startsWith('DTSTART')) {
             currentStart = _parseStrictDate(value);
+            if (!value.contains('T')) currentIsAllDay = true;
+          }
           else if (keyPart.startsWith('DTEND'))
             currentEnd = _parseStrictDate(value);
           else if (keyPart.startsWith('LOCATION'))
@@ -1095,6 +1336,7 @@ class _CalendarHomeState extends State<CalendarHome> {
               sourceId: original.sourceId,
               rrule: original.rrule,
               isGenerated: true,
+              isAllDay: original.isAllDay,
             ),
           );
         }
@@ -1136,7 +1378,50 @@ class _CalendarHomeState extends State<CalendarHome> {
     if (_errorMessage != null)
       return Scaffold(body: Center(child: Text(_errorMessage!)));
 
-    return Scaffold(
+    final filteredEvents = _filteredEvents;
+
+    return Focus(
+      autofocus: true,
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        // Only handle when this root node has focus (no dialog/text field active)
+        if (FocusManager.instance.primaryFocus != node) return KeyEventResult.ignored;
+
+        final isCtrl = HardwareKeyboard.instance.isControlPressed;
+        if (isCtrl) {
+          if (event.logicalKey == LogicalKeyboardKey.keyN) {
+            _showAddEventDialog();
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.keyF) {
+            _showSearchDialog();
+            return KeyEventResult.handled;
+          }
+        } else {
+          if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+            _prevPeriod();
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+            _nextPeriod();
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.keyT) {
+            _goToToday();
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.keyM) {
+            _setViewMode(CalendarViewMode.month);
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.keyW) {
+            _setViewMode(CalendarViewMode.week);
+            return KeyEventResult.handled;
+          }
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Scaffold(
       floatingActionButton: ExpressiveButton(
         size: 56,
         color: theme.colorScheme.primary,
@@ -1165,14 +1450,18 @@ class _CalendarHomeState extends State<CalendarHome> {
                                 ? MonthView(
                                     focusedMonth: _focusedMonth,
                                     selectedDate: _selectedDate,
-                                    events: _events,
+                                    events: filteredEvents,
+                                    weekStartsOnMonday: _weekStartsMonday,
                                     onDateSelected: (d) => setState(() => _selectedDate = d),
                                   )
                                 : WeekView(
                                     focusedMonth: _focusedMonth,
                                     selectedDate: _selectedDate,
-                                    events: _events,
+                                    events: filteredEvents,
                                     scrollController: _weekScrollController,
+                                    weekStartsOnMonday: _weekStartsMonday,
+                                    use24Hour: _use24Hour,
+                                    onTimeSlotTapped: (dt) => _showAddEventDialog(initialDateTime: dt),
                                     onDateSelected: (d) => setState(() => _selectedDate = d),
                                   ),
                           ),
@@ -1185,7 +1474,7 @@ class _CalendarHomeState extends State<CalendarHome> {
                     flex: 3,
                     child: _buildCard(
                       theme,
-                      _buildSidebar(theme),
+                      _buildSidebar(theme, filteredEvents),
                       isVariant: true,
                     ),
                   ),
@@ -1209,14 +1498,18 @@ class _CalendarHomeState extends State<CalendarHome> {
                                 ? MonthView(
                                     focusedMonth: _focusedMonth,
                                     selectedDate: _selectedDate,
-                                    events: _events,
+                                    events: filteredEvents,
+                                    weekStartsOnMonday: _weekStartsMonday,
                                     onDateSelected: (d) => setState(() => _selectedDate = d),
                                   )
                                 : WeekView(
                                     focusedMonth: _focusedMonth,
                                     selectedDate: _selectedDate,
-                                    events: _events,
+                                    events: filteredEvents,
                                     scrollController: _weekScrollController,
+                                    weekStartsOnMonday: _weekStartsMonday,
+                                    use24Hour: _use24Hour,
+                                    onTimeSlotTapped: (dt) => _showAddEventDialog(initialDateTime: dt),
                                     onDateSelected: (d) => setState(() => _selectedDate = d),
                                   ),
                           ),
@@ -1229,7 +1522,7 @@ class _CalendarHomeState extends State<CalendarHome> {
                     height: 450,
                     child: _buildCard(
                       theme,
-                      _buildSidebar(theme),
+                      _buildSidebar(theme, filteredEvents),
                       isVariant: true,
                     ),
                   ),
@@ -1239,7 +1532,8 @@ class _CalendarHomeState extends State<CalendarHome> {
           }
         },
       ),
-    );
+    ), // Scaffold
+    ); // Focus
   }
 
   Widget _buildCard(ThemeData theme, Widget child, {bool isVariant = false}) {
@@ -1285,36 +1579,8 @@ class _CalendarHomeState extends State<CalendarHome> {
           ),
           Row(
             children: [
-              IconButton(
-                onPressed: () {
-                  setState(() {
-                    if (_viewMode == CalendarViewMode.month) {
-                      _focusedMonth = DateTime(
-                          _focusedMonth.year, _focusedMonth.month - 1);
-                    } else {
-                      // Week View: Go back 7 days
-                      _focusedMonth =
-                          _focusedMonth.subtract(const Duration(days: 7));
-                    }
-                  });
-                },
-                icon: const Icon(Icons.chevron_left),
-              ),
-              IconButton(
-                onPressed: () {
-                  setState(() {
-                    if (_viewMode == CalendarViewMode.month) {
-                      _focusedMonth = DateTime(
-                          _focusedMonth.year, _focusedMonth.month + 1);
-                    } else {
-                      // Week View: Go forward 7 days
-                      _focusedMonth =
-                          _focusedMonth.add(const Duration(days: 7));
-                    }
-                  });
-                },
-                icon: const Icon(Icons.chevron_right),
-              ),
+              IconButton(onPressed: _prevPeriod, icon: const Icon(Icons.chevron_left)),
+              IconButton(onPressed: _nextPeriod, icon: const Icon(Icons.chevron_right)),
             ],
           ),
         ],
@@ -1324,12 +1590,11 @@ class _CalendarHomeState extends State<CalendarHome> {
 
 //-----------------------------------------------------------------------------------------------------------------------------------
 
-  Widget _buildSidebar(ThemeData theme) {
+  Widget _buildSidebar(
+      ThemeData theme, Map<DateTime, List<CalendarEvent>> filteredEvents) {
     final normalizedDate =
         DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
-    final events = (_events[normalizedDate] ?? const [])
-        .where((e) => !e.isHidden)
-        .toList();
+    final events = (filteredEvents[normalizedDate] ?? const []).toList();
     final isToday = _selectedDate.day == DateTime.now().day &&
         _selectedDate.month == DateTime.now().month &&
         _selectedDate.year == DateTime.now().year;
@@ -1389,7 +1654,36 @@ class _CalendarHomeState extends State<CalendarHome> {
                       ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
+
+                // Calendar visibility chips
+                if (_calendarPaths.length > 1)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: _calendarPaths.map((path) {
+                        final name = _basename(path);
+                        final isHidden = _hiddenCalendarPaths.contains(path);
+                        return FilterChip(
+                          label: Text(name,
+                              style: const TextStyle(fontSize: 11)),
+                          selected: !isHidden,
+                          onSelected: (selected) =>
+                              _toggleCalendar(path, !selected),
+                          selectedColor:
+                              theme.colorScheme.primaryContainer,
+                          checkmarkColor: theme.colorScheme.primary,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 4, vertical: 0),
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        );
+                      }).toList(),
+                    ),
+                  ),
 
                 // WEATHER WIDGET
                 if (_weather != null)
@@ -1473,6 +1767,7 @@ class _CalendarHomeState extends State<CalendarHome> {
                   itemCount: events.length,
                   itemBuilder: (context, index) => EventCard(
                     event: events[index],
+                    use24Hour: _use24Hour,
                     onEdit: _isLocalKhalEvent(events[index])
                         ? () => _showEditEventDialog(events[index])
                         : null,
