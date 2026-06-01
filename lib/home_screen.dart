@@ -63,7 +63,7 @@ class _CalendarHomeState extends State<CalendarHome> {
     _selectedDate = _normalizeDate(DateTime.now());
     _loadEvents();
     _loadWeather();
-    _loadTodos(); // Reads settings, so check view mode there
+    _loadTodos();
   }
 
   // Stable hash (FNV-1a 32-bit) for deterministic IDs
@@ -310,9 +310,7 @@ class _CalendarHomeState extends State<CalendarHome> {
     try {
       await _ensureDirs();
 
-      _events = await _verifyKhalConnection()
-          ? await _loadKhalEventsFromVdir()
-          : {};
+      _events = await _loadKhalEventsFromVdir();
 
       setState(() {
         _isLoading = false;
@@ -381,15 +379,9 @@ class _CalendarHomeState extends State<CalendarHome> {
   void _linkTodoEvent(String todoId, String? eventId) {
     final idx = _todos.indexWhere((t) => t.id == todoId);
     if (idx == -1) return;
-    final t = _todos[idx];
     setState(() {
-      _todos[idx] = TodoItem(
-        id: t.id,
-        title: t.title,
-        isCompleted: t.isCompleted,
-        linkedEventId: eventId,
-        createdAt: t.createdAt,
-      );
+      _todos[idx] = _todos[idx]
+          .copyWith(linkedEventId: eventId, clearLink: eventId == null);
     });
     _saveTodos();
   }
@@ -415,32 +407,6 @@ class _CalendarHomeState extends State<CalendarHome> {
       if (await f.exists()) return f;
     }
     return null;
-  }
-
-  Future<bool> _verifyKhalConnection() async {
-    try {
-      final version = await Process.run('khal', ['--version']);
-      if (version.exitCode != 0) return false;
-
-      final cfgFile = await _findKhalConfigFile();
-      if (cfgFile == null) return false;
-
-      final raw = await cfgFile.readAsLines();
-      final paths = _extractKhalCalendarPaths(raw);
-      if (paths.isEmpty) return false;
-
-      final expanded = <String>[];
-      for (final p in paths) {
-        expanded.addAll(await _expandCalendarPathPattern(p));
-      }
-
-      for (final p in expanded) {
-        if (await Directory(p).exists()) return true;
-      }
-      return false;
-    } catch (_) {
-      return false;
-    }
   }
 
   List<String> _extractKhalCalendarPaths(List<String> lines) {
@@ -529,6 +495,7 @@ class _CalendarHomeState extends State<CalendarHome> {
       final minViewable = DateTime(now.year - 1, 1, 1);
       final maxDate = DateTime(now.year + 2, 12, 31);
 
+      final validFiles = <File>[];
       for (final calPath in expanded) {
         final dir = Directory(calPath);
         if (!await dir.exists()) continue;
@@ -536,26 +503,35 @@ class _CalendarHomeState extends State<CalendarHome> {
 
         final ents =
             await dir.list(recursive: false, followLinks: false).toList();
-        final validFiles = ents
+        validFiles.addAll(ents
             .whereType<File>()
-            .where((e) => e.path.toLowerCase().endsWith('.ics'));
+            .where((e) => e.path.toLowerCase().endsWith('.ics')));
+      }
 
-        for (final file in validFiles) {
-          try {
-            final content = await file.readAsString();
-            final parsed = _parseICS(
-              content,
-              sourceId: file.path,
-              minViewable: minViewable,
-              maxDate: maxDate,
-            );
-            for (final list in parsed.values) {
-              for (final event in list) {
-                _addEventToMap(events, event.startTime, event);
-              }
-            }
-          } catch (_) {}
+      final contents = await Future.wait(validFiles.map((f) async {
+        try {
+          return await f.readAsString();
+        } catch (_) {
+          return null;
         }
+      }));
+
+      for (var i = 0; i < validFiles.length; i++) {
+        final content = contents[i];
+        if (content == null) continue;
+        try {
+          final parsed = _parseICS(
+            content,
+            sourceId: validFiles[i].path,
+            minViewable: minViewable,
+            maxDate: maxDate,
+          );
+          for (final list in parsed.values) {
+            for (final event in list) {
+              _addEventToMap(events, event.startTime, event);
+            }
+          }
+        } catch (_) {}
       }
       for (final date in events.keys) {
         events[date]!.sort((a, b) => a.startTime.compareTo(b.startTime));
