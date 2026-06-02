@@ -4,10 +4,9 @@
 /// Configures the MaterialApp, Themes, and the Home Screen.
 
 import 'package:flutter/material.dart';
-import 'dart:io';
-import 'dart:convert';
 import 'models.dart';
 import 'home_screen.dart';
+import 'utils.dart';
 
 void main() {
   runApp(const MyCalendarApp());
@@ -24,38 +23,6 @@ class _MyCalendarAppState extends State<MyCalendarApp> {
   AppThemeSetting _themeSetting = AppThemeSetting.dark;
   WeatherUnit _weatherUnit = WeatherUnit.celsius;
 
-// ------------------------------------------------------------------------------------------------------------------------------------
-  //  I/O helpers for scope issues
-  String _homeDir() => Platform.environment['HOME'] ?? '';
-
-  String _joinPath(List<String> parts) {
-    final sep = Platform.pathSeparator;
-    return parts.where((p) => p.isNotEmpty).join(sep);
-  }
-
-  Directory _baseDir() =>
-      Directory(_joinPath([_homeDir(), 'Documents', 'EverCal']));
-  File _settingsFile() => File(_joinPath([_baseDir().path, 'settings.json']));
-
-  Future<Map<String, dynamic>> _readSettings() async {
-    try {
-      final f = _settingsFile();
-      if (!await f.exists()) return {};
-      final raw = await f.readAsString();
-      final decoded = json.decode(raw);
-      if (decoded is Map<String, dynamic>) return decoded;
-    } catch (_) {}
-    return {};
-  }
-
-  Future<void> _writeSettings(Map<String, dynamic> settings) async {
-    try {
-      final dir = _baseDir();
-      if (!await dir.exists()) await dir.create(recursive: true);
-      await _settingsFile().writeAsString(json.encode(settings));
-    } catch (_) {}
-  }
-// ------------------------------------------------------------------------------------------------------------------------------------
   // Theme states are persistent
   @override
   void initState() {
@@ -64,7 +31,7 @@ class _MyCalendarAppState extends State<MyCalendarApp> {
   }
 
   Future<void> _initThemeOnBoot() async {
-    final settings = await _readSettings();
+    final settings = await readSettings();
     final mode = settings['theme_mode'] ?? 'dark';
     final savedUnit = settings['weather_unit'];
     if (savedUnit == 'fahrenheit')
@@ -85,7 +52,7 @@ class _MyCalendarAppState extends State<MyCalendarApp> {
 
   // Cycle theme: Dark → Light → Rose Pine Dawn → Dark
   Future<void> _cycleTheme() async {
-    final settings = await _readSettings();
+    final settings = await readSettings();
 
     if (_themeSetting == AppThemeSetting.dark) {
       setState(() => _themeSetting = AppThemeSetting.light);
@@ -98,7 +65,7 @@ class _MyCalendarAppState extends State<MyCalendarApp> {
       settings['theme_mode'] = 'dark';
     }
 
-    await _writeSettings(settings);
+    await writeSettings(settings);
   }
 
 // ------------------------------------------------------------------------------------------------------------------------------------

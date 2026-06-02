@@ -82,21 +82,11 @@ class _CalendarHomeState extends State<CalendarHome> {
     return hash.toRadixString(16).padLeft(8, '0');
   }
 
-  String _homeDir() => Platform.environment['HOME'] ?? '';
-
-  String _joinPath(List<String> parts) {
-    final sep = Platform.pathSeparator;
-    return parts.where((p) => p.isNotEmpty).join(sep);
-  }
-
-  Directory _baseDir() =>
-      Directory(_joinPath([_homeDir(), 'Documents', 'EverCal']));
-  File _settingsFile() => File(_joinPath([_baseDir().path, 'settings.json']));
-  File _todosFile() => File(_joinPath([_baseDir().path, 'todos.json']));
-  File _goalsFile() => File(_joinPath([_baseDir().path, 'goals.json']));
+  File _todosFile() => File(joinPath([baseDir().path, 'todos.json']));
+  File _goalsFile() => File(joinPath([baseDir().path, 'goals.json']));
 
   Future<void> _ensureDirs() async {
-    if (!await _baseDir().exists()) await _baseDir().create(recursive: true);
+    if (!await baseDir().exists()) await baseDir().create(recursive: true);
   }
 
   String _normDir(String path) {
@@ -112,23 +102,6 @@ class _CalendarHomeState extends State<CalendarHome> {
     final sep = Platform.pathSeparator;
     final parts = _normDir(path).split(sep);
     return parts.isEmpty ? path : parts.last;
-  }
-
-  Future<Map<String, dynamic>> _readSettings() async {
-    try {
-      final f = _settingsFile();
-      if (!await f.exists()) return {};
-      final raw = await f.readAsString();
-      final decoded = json.decode(raw);
-      if (decoded is Map<String, dynamic>) return decoded;
-    } catch (_) {}
-    return {};
-  }
-
-  Future<void> _writeSettings(Map<String, dynamic> settings) async {
-    try {
-      await _settingsFile().writeAsString(json.encode(settings));
-    } catch (_) {}
   }
 
   void _snack(String message) {
@@ -148,7 +121,7 @@ class _CalendarHomeState extends State<CalendarHome> {
   Future<void> _loadWeather() async {
     try {
       // Load Settings & Unit
-      final settings = await _readSettings();
+      final settings = await readSettings();
 
       // Load View Mode
       final savedView = settings['calendar_view'];
@@ -260,7 +233,7 @@ class _CalendarHomeState extends State<CalendarHome> {
     if (result == null) return;
 
     // PROCESS RESULTS
-    final settings = await _readSettings();
+    final settings = await readSettings();
     bool needsRefresh = false;
 
     // Save Unit
@@ -299,7 +272,7 @@ class _CalendarHomeState extends State<CalendarHome> {
       } catch (_) {}
     }
 
-    await _writeSettings(settings);
+    await writeSettings(settings);
     if (needsRefresh) _loadWeather();
   }
 
@@ -506,15 +479,15 @@ class _CalendarHomeState extends State<CalendarHome> {
   String _xdgConfigHome() {
     final xdg = Platform.environment['XDG_CONFIG_HOME'];
     if (xdg != null && xdg.trim().isNotEmpty) return xdg.trim();
-    return _joinPath([_homeDir(), '.config']);
+    return joinPath([homeDir(), '.config']);
   }
 
   Future<File?> _findKhalConfigFile() async {
     final cfgHome = _xdgConfigHome();
     final candidates = [
-      _joinPath([cfgHome, 'khal', 'config']),
-      _joinPath([cfgHome, 'khal', 'config.ini']),
-      _joinPath([_homeDir(), '.khal', 'khal.conf']),
+      joinPath([cfgHome, 'khal', 'config']),
+      joinPath([cfgHome, 'khal', 'config.ini']),
+      joinPath([homeDir(), '.khal', 'khal.conf']),
     ];
 
     for (final p in candidates) {
@@ -548,7 +521,7 @@ class _CalendarHomeState extends State<CalendarHome> {
 
   String _expandHomeAndEnv(String path) {
     var p = path.trim();
-    final home = _homeDir();
+    final home = homeDir();
     if (p.startsWith('~')) {
       p = home + p.substring(1);
     }
@@ -670,7 +643,7 @@ class _CalendarHomeState extends State<CalendarHome> {
   }
 
   String _localKhalCalendarPath() =>
-      _joinPath([_homeDir(), '.calendars', 'local']);
+      joinPath([homeDir(), '.calendars', 'local']);
 
   bool _isLocalKhalEvent(CalendarEvent event) {
     final sourceId = event.sourceId;
@@ -926,7 +899,7 @@ class _CalendarHomeState extends State<CalendarHome> {
             '${event.startTime.toIso8601String()}|'
             '${event.endTime.toIso8601String()}|'
             '${DateTime.now().microsecondsSinceEpoch}')}';
-    final filePath = _joinPath([calPath, '$uid.ics']);
+    final filePath = joinPath([calPath, '$uid.ics']);
     final khalEvent = event.copyWith(
       id: uid,
       sourceId: filePath,
@@ -1040,9 +1013,9 @@ class _CalendarHomeState extends State<CalendarHome> {
   }
 
   Future<void> _patchSetting(String key, dynamic value) async {
-    final settings = await _readSettings();
+    final settings = await readSettings();
     settings[key] = value;
-    await _writeSettings(settings);
+    await writeSettings(settings);
   }
 
   Future<void> _toggleCalendar(String path, bool hide) async {

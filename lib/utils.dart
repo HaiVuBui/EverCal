@@ -2,6 +2,8 @@
 ///
 /// Contains global static formatters and shared utility functions.
 
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -37,3 +39,32 @@ const List<Color> _eventColors = [
 
 Color eventColor(String title) =>
     _eventColors[title.hashCode.abs() % _eventColors.length];
+
+// Shared filesystem / settings helpers.
+
+String homeDir() => Platform.environment['HOME'] ?? '';
+
+String joinPath(List<String> parts) =>
+    parts.where((p) => p.isNotEmpty).join(Platform.pathSeparator);
+
+Directory baseDir() => Directory(joinPath([homeDir(), 'Documents', 'EverCal']));
+
+File settingsFile() => File(joinPath([baseDir().path, 'settings.json']));
+
+Future<Map<String, dynamic>> readSettings() async {
+  try {
+    final f = settingsFile();
+    if (!await f.exists()) return {};
+    final decoded = json.decode(await f.readAsString());
+    if (decoded is Map<String, dynamic>) return decoded;
+  } catch (_) {}
+  return {};
+}
+
+Future<void> writeSettings(Map<String, dynamic> settings) async {
+  try {
+    final dir = baseDir();
+    if (!await dir.exists()) await dir.create(recursive: true);
+    await settingsFile().writeAsString(json.encode(settings));
+  } catch (_) {}
+}
