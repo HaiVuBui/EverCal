@@ -443,6 +443,7 @@ class WeekView extends StatelessWidget {
                                       return Stack(
                                         children: _buildDayEvents(
                                           dayEvents,
+                                          dayDate,
                                           hourHeight,
                                           constraints.maxWidth,
                                           theme,
@@ -482,8 +483,10 @@ class WeekView extends StatelessWidget {
     return '$hour AM';
   }
 
-  List<Widget> _buildDayEvents(List<CalendarEvent> events, double hourHeight,
-      double colWidth, ThemeData theme) {
+  List<Widget> _buildDayEvents(List<CalendarEvent> events, DateTime dayDate,
+      double hourHeight, double colWidth, ThemeData theme) {
+    final dayStart = DateTime(dayDate.year, dayDate.month, dayDate.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
     final widgets = <Widget>[];
 
     // Filter all-day (shown in banner) and sort; visibility is already
@@ -522,10 +525,14 @@ class WeekView extends StatelessWidget {
 
     for (int laneIdx = 0; laneIdx < totalLanes; laneIdx++) {
       for (var event in lanes[laneIdx]) {
-        final double start =
-            event.startTime.hour + (event.startTime.minute / 60.0);
-        final double end =
-            event.endTime.hour + (event.endTime.minute / 60.0);
+        // Clamp the event to this day so multi-day events render only the
+        // portion that falls within the column.
+        final segStart =
+            event.startTime.isBefore(dayStart) ? dayStart : event.startTime;
+        final segEnd = event.endTime.isAfter(dayEnd) ? dayEnd : event.endTime;
+
+        final double start = segStart.difference(dayStart).inMinutes / 60.0;
+        final double end = segEnd.difference(dayStart).inMinutes / 60.0;
         final double duration = end - start;
 
         final double top = start * hourHeight;

@@ -477,10 +477,7 @@ class _CalendarHomeState extends State<CalendarHome> {
   Map<DateTime, List<CalendarEvent>> _addGoalsToEvents(
       Map<DateTime, List<CalendarEvent>> base) {
     if (_goals.every((g) => g.isCompleted || g.date == null)) return base;
-    final result = <DateTime, List<CalendarEvent>>{};
-    for (final entry in base.entries) {
-      result[entry.key] = List.from(entry.value);
-    }
+    final result = base.map((k, v) => MapEntry(k, List<CalendarEvent>.from(v)));
     final modifiedDays = <DateTime>{};
     for (final goal in _goals) {
       if (goal.isCompleted || goal.date == null) continue;
@@ -798,25 +795,7 @@ class _CalendarHomeState extends State<CalendarHome> {
     }
 
     if (event.isGenerated) {
-      final choice = await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-          title: const Text('Edit recurring event', textAlign: TextAlign.center),
-          content: const Text('Which events do you want to edit?'),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel')),
-            OutlinedButton(
-                onPressed: () => Navigator.pop(context, 'all'),
-                child: const Text('All events')),
-            FilledButton(
-                onPressed: () => Navigator.pop(context, 'this'),
-                child: const Text('This event')),
-          ],
-        ),
-      );
+      final choice = await _showRecurringChoiceDialog('Edit');
       if (!mounted) return;
       if (choice == 'this') await _editThisOccurrence(event);
       if (choice == 'all') await _editAllOccurrences(event);
@@ -834,6 +813,43 @@ class _CalendarHomeState extends State<CalendarHome> {
         ),
       ),
     );
+  }
+
+  Future<String?> _showRecurringChoiceDialog(String verb) =>
+      showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+          title: Text('$verb recurring event', textAlign: TextAlign.center),
+          content: Text('Which events do you want to $verb?'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            OutlinedButton(
+                onPressed: () => Navigator.pop(context, 'all'),
+                child: const Text('All events')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, 'this'),
+                child: const Text('This event')),
+          ],
+        ),
+      );
+
+  // Append an EXDATE for [instance]'s start time to its master ICS file,
+  // excluding that single occurrence from the recurrence.
+  Future<void> _addExdate(CalendarEvent instance) async {
+    final masterPath = instance.sourceId;
+    if (masterPath == null) return;
+    try {
+      final f = File(masterPath);
+      if (await f.exists()) {
+        final content = await f.readAsString();
+        final exdate = 'EXDATE:${fmtIcsTime.format(instance.startTime)}';
+        await f.writeAsString(
+            content.replaceFirst('END:VEVENT', '$exdate\nEND:VEVENT'));
+      }
+    } catch (_) {}
   }
 
   CalendarEvent? _findMasterEvent(String sourceId) {
@@ -861,18 +877,7 @@ class _CalendarHomeState extends State<CalendarHome> {
     if (edited == null) return;
 
     // Add EXDATE to master ICS
-    final masterPath = instance.sourceId;
-    if (masterPath != null) {
-      try {
-        final f = File(masterPath);
-        if (await f.exists()) {
-          final content = await f.readAsString();
-          final exdate = 'EXDATE:${fmtIcsTime.format(instance.startTime)}';
-          await f.writeAsString(
-              content.replaceFirst('END:VEVENT', '$exdate\nEND:VEVENT'));
-        }
-      } catch (_) {}
-    }
+    await _addExdate(instance);
 
     // Write new standalone event
     await _addEvent(edited!.startTime, edited!.copyWith(
@@ -960,10 +965,22 @@ class _CalendarHomeState extends State<CalendarHome> {
     }
 
     if (event.isGenerated) {
-      _snack('Deleting generated recurring instances is not supported yet.');
+      final choice = await _showRecurringChoiceDialog('Delete');
+      if (!mounted) return;
+      if (choice == 'this') {
+        await _addExdate(event);
+        await _loadEvents();
+      } else if (choice == 'all') {
+        final master = _findMasterEvent(event.sourceId ?? '');
+        await _deleteEventFile(master ?? event);
+      }
       return;
     }
 
+    await _deleteEventFile(event);
+  }
+
+  Future<void> _deleteEventFile(CalendarEvent event) async {
     final path = event.sourceId;
     if (path == null || path.isEmpty) return;
     try {
@@ -1256,8 +1273,18 @@ class _CalendarHomeState extends State<CalendarHome> {
 
   void _addEventToMap(Map<DateTime, List<CalendarEvent>> events, DateTime start,
       CalendarEvent event) {
-    final dayEvents = events.putIfAbsent(_normalizeDate(start), () => []);
-    if (!dayEvents.any((e) => e.id == event.id)) dayEvents.add(event);
+    final firstDay = _normalizeDate(start);
+    var lastDay = _normalizeDate(event.endTime);
+    // An event ending exactly at midnight has no duration on its end day.
+    if (lastDay != firstDay && event.endTime == lastDay) {
+      lastDay = lastDay.subtract(const Duration(days: 1));
+    }
+    for (var day = firstDay;
+        !day.isAfter(lastDay);
+        day = day.add(const Duration(days: 1))) {
+      final dayEvents = events.putIfAbsent(day, () => []);
+      if (!dayEvents.any((e) => e.id == event.id)) dayEvents.add(event);
+    }
   }
 
   DateTime? _parseStrictDate(String value) {

@@ -16,6 +16,20 @@ final _editActionButtonStyle = TextButton.styleFrom(
   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
 );
 
+void _showContextMenu(BuildContext context, TapUpDetails details,
+    List<PopupMenuEntry<Object?>> items) {
+  final box = context.findRenderObject() as RenderBox?;
+  final offset =
+      box?.localToGlobal(details.localPosition) ?? details.globalPosition;
+  showMenu<Object?>(
+    context: context,
+    position: RelativeRect.fromLTRB(
+        offset.dx, offset.dy, offset.dx + 1, offset.dy + 1),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    items: items,
+  );
+}
+
 Widget _menuRow(ThemeData theme, IconData icon, String label, Color iconColor) =>
     Row(children: [
       Icon(icon, size: 16, color: iconColor),
@@ -301,26 +315,17 @@ class _EventCardState extends State<EventCard> {
         : '${fmt.format(widget.event.startTime)} – ${fmt.format(widget.event.endTime)}';
 
     return GestureDetector(
-      onSecondaryTapUp: (details) {
-        final box = context.findRenderObject() as RenderBox?;
-        final offset = box?.localToGlobal(details.localPosition) ?? details.globalPosition;
-        showMenu(
-          context: context,
-          position: RelativeRect.fromLTRB(offset.dx, offset.dy, offset.dx + 1, offset.dy + 1),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          items: [
-            if (widget.onEdit != null)
-              PopupMenuItem(
-                onTap: widget.onEdit,
-                child: _menuRow(theme,Icons.edit_outlined, 'Edit', theme.colorScheme.primary),
-              ),
-            PopupMenuItem(
-              onTap: widget.onDelete,
-              child: _menuRow(theme,Icons.delete_outline, 'Delete', theme.colorScheme.error),
-            ),
-          ],
-        );
-      },
+      onSecondaryTapUp: (details) => _showContextMenu(context, details, [
+        if (widget.onEdit != null)
+          PopupMenuItem(
+            onTap: widget.onEdit,
+            child: _menuRow(theme, Icons.edit_outlined, 'Edit', theme.colorScheme.primary),
+          ),
+        PopupMenuItem(
+          onTap: widget.onDelete,
+          child: _menuRow(theme, Icons.delete_outline, 'Delete', theme.colorScheme.error),
+        ),
+      ]),
       child: Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Material(
@@ -606,46 +611,34 @@ class TodoCard extends StatelessWidget {
     return GestureDetector(
       onSecondaryTapUp: isEditing
           ? null
-          : (details) {
-              final box = context.findRenderObject() as RenderBox?;
-              final offset = box?.localToGlobal(details.localPosition) ??
-                  details.globalPosition;
-              showMenu(
-                context: context,
-                position: RelativeRect.fromLTRB(
-                    offset.dx, offset.dy, offset.dx + 1, offset.dy + 1),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-                items: [
-                  if (onEdit != null)
-                    PopupMenuItem(
-                      onTap: onEdit,
-                      child: _menuRow(theme, Icons.edit_outlined, 'Edit',
-                          theme.colorScheme.onSurface),
-                    ),
-                  if (onAttachEvent != null)
-                    PopupMenuItem(
-                      onTap: onAttachEvent,
-                      child: _menuRow(
-                          theme,
-                          Icons.event_outlined,
-                          linkedEvent != null ? 'Change event' : 'Attach event',
-                          theme.colorScheme.primary),
-                    ),
-                  if (linkedEvent != null && onRemoveEvent != null)
-                    PopupMenuItem(
-                      onTap: onRemoveEvent,
-                      child: _menuRow(theme, Icons.link_off, 'Remove event',
-                          theme.colorScheme.onSurfaceVariant),
-                    ),
+          : (details) => _showContextMenu(context, details, [
+                if (onEdit != null)
                   PopupMenuItem(
-                    onTap: onDelete,
-                    child: _menuRow(theme, Icons.delete_outline, 'Delete',
-                        theme.colorScheme.error),
+                    onTap: onEdit,
+                    child: _menuRow(theme, Icons.edit_outlined, 'Edit',
+                        theme.colorScheme.onSurface),
                   ),
-                ],
-              );
-            },
+                if (onAttachEvent != null)
+                  PopupMenuItem(
+                    onTap: onAttachEvent,
+                    child: _menuRow(
+                        theme,
+                        Icons.event_outlined,
+                        linkedEvent != null ? 'Change event' : 'Attach event',
+                        theme.colorScheme.primary),
+                  ),
+                if (linkedEvent != null && onRemoveEvent != null)
+                  PopupMenuItem(
+                    onTap: onRemoveEvent,
+                    child: _menuRow(theme, Icons.link_off, 'Remove event',
+                        theme.colorScheme.onSurfaceVariant),
+                  ),
+                PopupMenuItem(
+                  onTap: onDelete,
+                  child: _menuRow(theme, Icons.delete_outline, 'Delete',
+                      theme.colorScheme.error),
+                ),
+              ]),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
@@ -1072,30 +1065,19 @@ class GoalCard extends StatelessWidget {
             : '${fmtGridDay.format(goal.date!)}, ${goal.date!.year}';
 
     return GestureDetector(
-      onSecondaryTapUp: (details) {
-        final box = context.findRenderObject() as RenderBox?;
-        final offset =
-            box?.localToGlobal(details.localPosition) ?? details.globalPosition;
-        showMenu(
-          context: context,
-          position: RelativeRect.fromLTRB(
-              offset.dx, offset.dy, offset.dx + 1, offset.dy + 1),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          items: [
-            if (onEdit != null)
-              PopupMenuItem(
-                onTap: onEdit,
-                child: _menuRow(theme, Icons.edit_outlined, 'Edit',
-                    theme.colorScheme.primary),
-              ),
-            PopupMenuItem(
-              onTap: onDelete,
-              child: _menuRow(theme, Icons.delete_outline, 'Delete',
-                  theme.colorScheme.error),
-            ),
-          ],
-        );
-      },
+      onSecondaryTapUp: (details) => _showContextMenu(context, details, [
+        if (onEdit != null)
+          PopupMenuItem(
+            onTap: onEdit,
+            child: _menuRow(theme, Icons.edit_outlined, 'Edit',
+                theme.colorScheme.primary),
+          ),
+        PopupMenuItem(
+          onTap: onDelete,
+          child: _menuRow(theme, Icons.delete_outline, 'Delete',
+              theme.colorScheme.error),
+        ),
+      ]),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
