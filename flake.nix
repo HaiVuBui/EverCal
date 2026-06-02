@@ -19,6 +19,19 @@
         system:
         let
           pkgs = import nixpkgs { inherit system; };
+          lib = pkgs.lib;
+          buildSrc = lib.cleanSourceWith {
+            src = ./.;
+            filter = path: _type:
+              let rel = lib.removePrefix (toString ./. + "/") (toString path);
+              in lib.any (prefix: lib.hasPrefix prefix rel) [
+                "lib"
+                "linux"
+                "assets"
+                "pubspec"
+                "analysis_options"
+              ];
+          };
 
           desktopItem = pkgs.makeDesktopItem {
             name = "evercal";
@@ -36,7 +49,7 @@
           default = pkgs.flutterPackages.v3_41.buildFlutterApplication rec {
             pname = "evercal";
             version = "1.0.0";
-            src = ./.;
+            src = buildSrc;
 
             autoPubspecLock = ./pubspec.lock;
 
