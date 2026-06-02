@@ -6,6 +6,27 @@ import 'package:flutter/material.dart';
 import 'models.dart';
 import 'utils.dart';
 
+InputDecoration _dialogInputDecor(ThemeData theme) => InputDecoration(
+      filled: true,
+      fillColor: theme.brightness == Brightness.light
+          ? Colors.black.withOpacity(0.1)
+          : theme.colorScheme.surfaceVariant.withOpacity(0.3),
+      border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    );
+
+Widget _dialogFieldLabel(ThemeData theme, String text) => Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 6),
+      child: Text(
+        text,
+        style: theme.textTheme.labelMedium?.copyWith(
+          fontWeight: FontWeight.bold,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+
 // Dialog for Weather Location and Unit settings
 class LocationSettingsDialog extends StatefulWidget {
   final WeatherUnit currentUnit;
@@ -259,21 +280,6 @@ class _AddEventDialogState extends State<AddEventDialog> {
     super.dispose();
   }
 
-  // Helper for Labels
-  Widget buildLabel(BuildContext context, String text) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 6),
-      child: Text(
-        text,
-        style: theme.textTheme.labelMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
-    );
-  }
-
   Future<void> pickDateTime(bool isStart) async {
     final initialDate = isStart ? startDate : endDate;
     final pickedDate = await showDatePicker(
@@ -345,19 +351,7 @@ class _AddEventDialogState extends State<AddEventDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isLight = theme.brightness == Brightness.light;
-    final inputDecor = InputDecoration(
-      filled: true,
-      fillColor: isLight
-          ? Colors.black.withOpacity(0.1)
-          : theme.colorScheme.surfaceVariant.withOpacity(0.3),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
-      ),
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-    );
+    final inputDecor = _dialogInputDecor(theme);
 
     return AlertDialog(
       title: Text(
@@ -375,7 +369,7 @@ class _AddEventDialogState extends State<AddEventDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // TITLE
-              buildLabel(context, 'Title'),
+              _dialogFieldLabel(theme,'Title'),
               TextField(
                 controller: titleController,
                 decoration: inputDecor,
@@ -392,7 +386,7 @@ class _AddEventDialogState extends State<AddEventDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        buildLabel(context, 'Location'),
+                        _dialogFieldLabel(theme,'Location'),
                         TextField(
                           controller: locationController,
                           decoration: inputDecor,
@@ -406,7 +400,7 @@ class _AddEventDialogState extends State<AddEventDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        buildLabel(context, 'Repeat'),
+                        _dialogFieldLabel(theme,'Repeat'),
                         DropdownButtonFormField<String>(
                           value: selectedFreq,
                           decoration: inputDecor,
@@ -452,7 +446,7 @@ class _AddEventDialogState extends State<AddEventDialog> {
               const SizedBox(height: 20),
 
               // DESCRIPTION
-              buildLabel(context, 'Description'),
+              _dialogFieldLabel(theme,'Description'),
               TextField(
                 controller: descriptionController,
                 decoration: inputDecor,
@@ -500,6 +494,185 @@ class _AddEventDialogState extends State<AddEventDialog> {
             );
 
             widget.onSave(s, newEvent);
+            Navigator.pop(context);
+          },
+          child: Text(_isEditing ? 'Update' : 'Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class AddGoalDialog extends StatefulWidget {
+  final DateTime initialDate;
+  final String Function(String) fnv1aHex;
+  final Function(GoalItem) onSave;
+  final GoalItem? existingGoal;
+
+  const AddGoalDialog({
+    super.key,
+    required this.initialDate,
+    required this.fnv1aHex,
+    required this.onSave,
+    this.existingGoal,
+  });
+
+  @override
+  State<AddGoalDialog> createState() => _AddGoalDialogState();
+}
+
+class _AddGoalDialogState extends State<AddGoalDialog> {
+  final _titleController = TextEditingController();
+  bool _hasDate = false;
+  late DateTime _date;
+  bool _hasTime = false;
+  TimeOfDay _time = const TimeOfDay(hour: 9, minute: 0);
+
+  bool get _isEditing => widget.existingGoal != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final existing = widget.existingGoal;
+    if (existing != null) {
+      _titleController.text = existing.title;
+      _hasDate = existing.date != null;
+      _date = existing.date != null
+          ? DateTime(existing.date!.year, existing.date!.month, existing.date!.day)
+          : DateTime(widget.initialDate.year, widget.initialDate.month, widget.initialDate.day);
+      _hasTime = existing.hasTime;
+      if (existing.hasTime) _time = TimeOfDay(hour: existing.hour, minute: existing.minute);
+    } else {
+      _date = DateTime(widget.initialDate.year, widget.initialDate.month, widget.initialDate.day);
+    }
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2040),
+    );
+    if (picked != null) setState(() => _date = DateTime(picked.year, picked.month, picked.day));
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(context: context, initialTime: _time);
+    if (picked != null) setState(() => _time = picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final inputDecor = _dialogInputDecor(theme);
+
+    return AlertDialog(
+      title: Text(_isEditing ? 'Edit Goal' : 'New Goal', textAlign: TextAlign.center),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      content: SizedBox(
+        width: MediaQuery.of(context).size.width * 0.4,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _dialogFieldLabel(theme, 'Title'),
+              TextField(
+                controller: _titleController,
+                decoration: inputDecor,
+                autofocus: true,
+                style: const TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Switch(
+                    value: _hasDate,
+                    onChanged: (val) => setState(() => _hasDate = val),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  const SizedBox(width: 8),
+                  Text('Set a target date',
+                      style: theme.textTheme.bodyMedium
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                ],
+              ),
+              if (_hasDate) ...[
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: _pickDate,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: theme.colorScheme.outline.withOpacity(0.5)),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.calendar_today, size: 16, color: theme.colorScheme.primary),
+                        const SizedBox(width: 8),
+                        Text('${fmtGridDay.format(_date)}, ${_date.year}'),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Switch(
+                      value: _hasTime,
+                      onChanged: (val) => setState(() => _hasTime = val),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    const SizedBox(width: 8),
+                    Text('Specify time',
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                    if (_hasTime) ...[
+                      const Spacer(),
+                      TextButton(
+                        onPressed: _pickTime,
+                        child: Text(
+                          _time.format(context),
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: () {
+            if (_titleController.text.isEmpty) return;
+            final existing = widget.existingGoal;
+            final now = DateTime.now();
+            final id = existing?.id ??
+                'goal_${widget.fnv1aHex('goal|${_titleController.text}|${_date.toIso8601String()}|${now.toIso8601String()}')}';
+            widget.onSave(GoalItem(
+              id: id,
+              title: _titleController.text.trim(),
+              isCompleted: existing?.isCompleted ?? false,
+              date: _hasDate ? _date : null,
+              hasTime: _hasDate && _hasTime,
+              hour: _hasDate && _hasTime ? _time.hour : 0,
+              minute: _hasDate && _hasTime ? _time.minute : 0,
+              createdAt: existing?.createdAt ?? now,
+            ));
             Navigator.pop(context);
           },
           child: Text(_isEditing ? 'Update' : 'Save'),

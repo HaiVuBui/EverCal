@@ -9,6 +9,7 @@ import 'package:flutter/material.dart'; // For IconData
 enum AppThemeSetting { dark, light, rosePineDawn }
 enum WeatherUnit { celsius, fahrenheit, kelvin }
 enum CalendarViewMode { month, week }
+enum SidebarTab { events, todos, goals }
 
 class WeatherData {
   final double temp;
@@ -62,6 +63,74 @@ class TodoItem {
         linkedEventId: json['linkedEventId'] as String?,
         createdAt: DateTime.parse(json['createdAt'] as String),
       );
+}
+
+class GoalItem {
+  final String id;
+  final String title;
+  final bool isCompleted;
+  final DateTime? date;   // null = no date/time (unscheduled)
+  final bool hasTime;     // only meaningful when date != null
+  final int hour;
+  final int minute;
+  final DateTime createdAt;
+
+  const GoalItem({
+    required this.id,
+    required this.title,
+    this.isCompleted = false,
+    this.date,
+    this.hasTime = false,
+    this.hour = 0,
+    this.minute = 0,
+    required this.createdAt,
+  });
+
+  GoalItem copyWith({
+    String? title,
+    bool? isCompleted,
+    DateTime? date,
+    bool clearDate = false,
+    bool? hasTime,
+    int? hour,
+    int? minute,
+  }) {
+    return GoalItem(
+      id: id,
+      title: title ?? this.title,
+      isCompleted: isCompleted ?? this.isCompleted,
+      date: clearDate ? null : (date ?? this.date),
+      hasTime: hasTime ?? this.hasTime,
+      hour: hour ?? this.hour,
+      minute: minute ?? this.minute,
+      createdAt: createdAt,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'isCompleted': isCompleted,
+        if (date != null) 'date': date!.toIso8601String(),
+        'hasTime': hasTime,
+        if (hasTime) 'hour': hour,
+        if (hasTime) 'minute': minute,
+        'createdAt': createdAt.toIso8601String(),
+      };
+
+  factory GoalItem.fromJson(Map<String, dynamic> json) {
+    final hasTime = json['hasTime'] as bool? ?? false;
+    return GoalItem(
+      id: json['id'] as String,
+      title: json['title'] as String,
+      isCompleted: json['isCompleted'] as bool? ?? false,
+      date: json['date'] != null ? DateTime.parse(json['date'] as String) : null,
+      hasTime: hasTime,
+      hour: hasTime ? (json['hour'] as int? ?? 0) : 0,
+      minute: hasTime ? (json['minute'] as int? ?? 0) : 0,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+    );
+  }
 }
 
 class CalendarEvent {

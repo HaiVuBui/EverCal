@@ -40,7 +40,8 @@ class _CalendarHomeState extends State<CalendarHome> {
 
   Map<DateTime, List<CalendarEvent>> _events = {};
   List<TodoItem> _todos = [];
-  bool _showTodos = false;
+  List<GoalItem> _goals = [];
+  SidebarTab _sidebarTab = SidebarTab.events;
 
   WeatherData? _weather;
   bool _isLoading = true;
@@ -64,6 +65,7 @@ class _CalendarHomeState extends State<CalendarHome> {
     _loadEvents();
     _loadWeather();
     _loadTodos();
+    _loadGoals();
   }
 
   // Stable hash (FNV-1a 32-bit) for deterministic IDs
@@ -91,6 +93,7 @@ class _CalendarHomeState extends State<CalendarHome> {
       Directory(_joinPath([_homeDir(), 'Documents', 'EverCal']));
   File _settingsFile() => File(_joinPath([_baseDir().path, 'settings.json']));
   File _todosFile() => File(_joinPath([_baseDir().path, 'todos.json']));
+  File _goalsFile() => File(_joinPath([_baseDir().path, 'goals.json']));
 
   Future<void> _ensureDirs() async {
     if (!await _baseDir().exists()) await _baseDir().create(recursive: true);
@@ -402,6 +405,103 @@ class _CalendarHomeState extends State<CalendarHome> {
       _todos[idx] = _todos[idx].copyWith(title: newTitle);
     });
     _saveTodos();
+  }
+
+  Future<void> _loadGoals() async {
+    try {
+      await _ensureDirs();
+      final f = _goalsFile();
+      if (!await f.exists()) return;
+      final raw = await f.readAsString();
+      final decoded = json.decode(raw);
+      if (decoded is List) {
+        setState(() {
+          _goals = decoded
+              .whereType<Map<String, dynamic>>()
+              .map(GoalItem.fromJson)
+              .toList();
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveGoals() async {
+    try {
+      await _goalsFile()
+          .writeAsString(json.encode(_goals.map((g) => g.toJson()).toList()));
+    } catch (_) {}
+  }
+
+  void _addGoal(GoalItem goal) {
+    setState(() => _goals.add(goal));
+    _saveGoals();
+  }
+
+  void _toggleGoal(String id) {
+    final idx = _goals.indexWhere((g) => g.id == id);
+    if (idx == -1) return;
+    setState(() => _goals[idx] = _goals[idx].copyWith(isCompleted: !_goals[idx].isCompleted));
+    _saveGoals();
+  }
+
+  void _deleteGoal(String id) {
+    setState(() => _goals.removeWhere((g) => g.id == id));
+    _saveGoals();
+  }
+
+  void _editGoal(String id, GoalItem updated) {
+    final idx = _goals.indexWhere((g) => g.id == id);
+    if (idx == -1) return;
+    setState(() => _goals[idx] = updated);
+    _saveGoals();
+  }
+
+  List<GoalItem> get _sortedGoals {
+    final dated = <GoalItem>[], undated = <GoalItem>[];
+    for (final g in _goals) {
+      (g.date != null ? dated : undated).add(g);
+    }
+    dated.sort((a, b) {
+      final dayA = DateTime(a.date!.year, a.date!.month, a.date!.day);
+      final dayB = DateTime(b.date!.year, b.date!.month, b.date!.day);
+      final cmp = dayA.compareTo(dayB);
+      if (cmp != 0) return cmp;
+      if (a.hasTime != b.hasTime) return a.hasTime ? -1 : 1;
+      if (a.hasTime) return (a.hour * 60 + a.minute).compareTo(b.hour * 60 + b.minute);
+      return 0;
+    });
+    undated.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return [...dated, ...undated];
+  }
+
+  Map<DateTime, List<CalendarEvent>> _addGoalsToEvents(
+      Map<DateTime, List<CalendarEvent>> base) {
+    if (_goals.every((g) => g.isCompleted || g.date == null)) return base;
+    final result = <DateTime, List<CalendarEvent>>{};
+    for (final entry in base.entries) {
+      result[entry.key] = List.from(entry.value);
+    }
+    final modifiedDays = <DateTime>{};
+    for (final goal in _goals) {
+      if (goal.isCompleted || goal.date == null) continue;
+      final start = goal.hasTime
+          ? DateTime(goal.date!.year, goal.date!.month, goal.date!.day, goal.hour, goal.minute)
+          : DateTime(goal.date!.year, goal.date!.month, goal.date!.day);
+      final dayKey = _normalizeDate(start);
+      result.putIfAbsent(dayKey, () => []).add(CalendarEvent(
+        id: 'goal_${goal.id}',
+        title: goal.title,
+        startTime: start,
+        endTime: goal.hasTime ? start.add(const Duration(hours: 1)) : start,
+        sourceId: 'goal:${goal.id}',
+        isAllDay: !goal.hasTime,
+      ));
+      modifiedDays.add(dayKey);
+    }
+    for (final day in modifiedDays) {
+      result[day]!.sort((a, b) => a.startTime.compareTo(b.startTime));
+    }
+    return result;
   }
 
   // Khal Utils
@@ -1400,6 +1500,7 @@ class _CalendarHomeState extends State<CalendarHome> {
       return Scaffold(body: Center(child: Text(_errorMessage!)));
 
     final filteredEvents = _filteredEvents;
+    final calendarEvents = _addGoalsToEvents(filteredEvents);
 
     return Focus(
       autofocus: true,
@@ -1465,7 +1566,7 @@ class _CalendarHomeState extends State<CalendarHome> {
                       Column(
                         children: [
                           _buildHeader(theme, compact: false),
-                          Expanded(child: _buildCalendarView(filteredEvents)),
+                          Expanded(child: _buildCalendarView(calendarEvents)),
                         ],
                       ),
                     ),
@@ -1494,7 +1595,7 @@ class _CalendarHomeState extends State<CalendarHome> {
                       Column(
                         children: [
                           _buildHeader(theme, compact: true),
-                          Expanded(child: _buildCalendarView(filteredEvents)),
+                          Expanded(child: _buildCalendarView(calendarEvents)),
                         ],
                       ),
                     ),
@@ -1684,27 +1785,32 @@ class _CalendarHomeState extends State<CalendarHome> {
                     ),
                   ),
 
-                // EVENTS / TODOS TOGGLE
+                // EVENTS / TODOS / GOALS TOGGLE
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: SegmentedButton<bool>(
+                  child: SegmentedButton<SidebarTab>(
                     segments: const [
                       ButtonSegment(
-                        value: false,
+                        value: SidebarTab.events,
                         label: Text('Events'),
                         icon: Icon(Icons.event_outlined, size: 16),
                       ),
                       ButtonSegment(
-                        value: true,
+                        value: SidebarTab.todos,
                         label: Text('Todos'),
                         icon: Icon(Icons.checklist_rounded, size: 16),
                       ),
+                      ButtonSegment(
+                        value: SidebarTab.goals,
+                        label: Text('Goals'),
+                        icon: Icon(Icons.flag_outlined, size: 16),
+                      ),
                     ],
-                    selected: {_showTodos},
+                    selected: {_sidebarTab},
                     onSelectionChanged: (s) =>
-                        setState(() => _showTodos = s.first),
+                        setState(() => _sidebarTab = s.first),
                     style: SegmentedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
                       visualDensity: VisualDensity.compact,
                       selectedBackgroundColor:
                           theme.colorScheme.onSurface.withOpacity(0.12),
@@ -1783,43 +1889,52 @@ class _CalendarHomeState extends State<CalendarHome> {
           ),
         ),
         Expanded(
-          child: _showTodos
-              ? TodosPanel(
-                  todos: _todos,
-                  dayEvents: events,
-                  allEvents: filteredEvents,
-                  onAdd: _addTodo,
-                  onToggle: _toggleTodo,
-                  onDelete: _deleteTodo,
-                  onLink: _linkTodoEvent,
-                  onReorder: _reorderTodos,
-                  onEdit: _editTodo,
-                  onJumpToEvent: (event) => setState(() {
-                    _selectedDate = _normalizeDate(event.startTime);
-                    _focusedMonth = _normalizeDate(event.startTime);
-                    _showTodos = false;
-                  }),
-                )
-              : events.isEmpty
-                  ? Center(
-                      child: Text('No Events',
-                          style: TextStyle(
-                              color: theme.colorScheme.onSurfaceVariant
-                                  .withOpacity(0.5))))
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 16),
-                      itemCount: events.length,
-                      itemBuilder: (context, index) => EventCard(
-                        event: events[index],
-                        use24Hour: _use24Hour,
-                        onEdit: _isLocalKhalEvent(events[index])
-                            ? () => _showEditEventDialog(events[index])
-                            : null,
-                        onDelete: () =>
-                            _deleteEvent(_selectedDate, events[index]),
-                      ),
+          child: switch (_sidebarTab) {
+            SidebarTab.todos => TodosPanel(
+                todos: _todos,
+                dayEvents: events,
+                allEvents: filteredEvents,
+                onAdd: _addTodo,
+                onToggle: _toggleTodo,
+                onDelete: _deleteTodo,
+                onLink: _linkTodoEvent,
+                onReorder: _reorderTodos,
+                onEdit: _editTodo,
+                onJumpToEvent: (event) => setState(() {
+                  _selectedDate = _normalizeDate(event.startTime);
+                  _focusedMonth = _normalizeDate(event.startTime);
+                  _sidebarTab = SidebarTab.events;
+                }),
+              ),
+            SidebarTab.goals => GoalsPanel(
+                goals: _sortedGoals,
+                fnv1aHex: _fnv1aHex,
+                onAdd: _addGoal,
+                onToggle: _toggleGoal,
+                onDelete: _deleteGoal,
+                onEdit: _editGoal,
+              ),
+            SidebarTab.events => events.isEmpty
+                ? Center(
+                    child: Text('No Events',
+                        style: TextStyle(
+                            color: theme.colorScheme.onSurfaceVariant
+                                .withOpacity(0.5))))
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 16),
+                    itemCount: events.length,
+                    itemBuilder: (context, index) => EventCard(
+                      event: events[index],
+                      use24Hour: _use24Hour,
+                      onEdit: _isLocalKhalEvent(events[index])
+                          ? () => _showEditEventDialog(events[index])
+                          : null,
+                      onDelete: () =>
+                          _deleteEvent(_selectedDate, events[index]),
                     ),
+                  ),
+          },
         ),
       ],
     );

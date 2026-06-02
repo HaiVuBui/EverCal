@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'models.dart';
 import 'utils.dart'; // for fmtTime
+import 'dialogs.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 final _editActionButtonStyle = TextButton.styleFrom(
@@ -1038,6 +1039,201 @@ class _TodosPanelState extends State<TodosPanel> {
                 ],
               ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class GoalCard extends StatelessWidget {
+  final GoalItem goal;
+  final VoidCallback onToggle;
+  final VoidCallback onDelete;
+  final VoidCallback? onEdit;
+
+  const GoalCard({
+    super.key,
+    required this.goal,
+    required this.onToggle,
+    required this.onDelete,
+    this.onEdit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final done = goal.isCompleted;
+
+    final String? dateLabel = goal.date == null
+        ? null
+        : goal.hasTime
+            ? '${fmtGridDay.format(goal.date!)}, ${goal.date!.year}  ·  ${TimeOfDay(hour: goal.hour, minute: goal.minute).format(context)}'
+            : '${fmtGridDay.format(goal.date!)}, ${goal.date!.year}';
+
+    return GestureDetector(
+      onSecondaryTapUp: (details) {
+        final box = context.findRenderObject() as RenderBox?;
+        final offset =
+            box?.localToGlobal(details.localPosition) ?? details.globalPosition;
+        showMenu(
+          context: context,
+          position: RelativeRect.fromLTRB(
+              offset.dx, offset.dy, offset.dx + 1, offset.dy + 1),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          items: [
+            if (onEdit != null)
+              PopupMenuItem(
+                onTap: onEdit,
+                child: _menuRow(theme, Icons.edit_outlined, 'Edit',
+                    theme.colorScheme.primary),
+              ),
+            PopupMenuItem(
+              onTap: onDelete,
+              child: _menuRow(theme, Icons.delete_outline, 'Delete',
+                  theme.colorScheme.error),
+            ),
+          ],
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Checkbox(
+              value: done,
+              onChanged: (_) => onToggle(),
+              shape: const RoundedRectangleBorder(),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      goal.title,
+                      style: TextStyle(
+                        decoration: done ? TextDecoration.lineThrough : null,
+                        color: done
+                            ? theme.colorScheme.onSurface.withOpacity(0.4)
+                            : theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    if (dateLabel != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        dateLabel,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: theme.colorScheme.onSurfaceVariant.withOpacity(0.6),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class GoalsPanel extends StatefulWidget {
+  final List<GoalItem> goals;
+  final String Function(String) fnv1aHex;
+  final Function(GoalItem) onAdd;
+  final Function(String id) onToggle;
+  final Function(String id) onDelete;
+  final Function(String id, GoalItem updated) onEdit;
+
+  const GoalsPanel({
+    super.key,
+    required this.goals,
+    required this.fnv1aHex,
+    required this.onAdd,
+    required this.onToggle,
+    required this.onDelete,
+    required this.onEdit,
+  });
+
+  @override
+  State<GoalsPanel> createState() => _GoalsPanelState();
+}
+
+class _GoalsPanelState extends State<GoalsPanel> {
+  Future<void> _showGoalDialog({GoalItem? existing}) async {
+    await showDialog(
+      context: context,
+      builder: (_) => AddGoalDialog(
+        initialDate: existing?.date ?? DateTime.now(),
+        fnv1aHex: widget.fnv1aHex,
+        existingGoal: existing,
+        onSave: (goal) {
+          if (existing == null) {
+            widget.onAdd(goal);
+          } else {
+            widget.onEdit(existing.id, goal);
+          }
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      children: [
+        Expanded(
+          child: widget.goals.isEmpty
+              ? Center(
+                  child: Text(
+                    'No Goals',
+                    style: TextStyle(
+                        color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5)),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  itemCount: widget.goals.length,
+                  itemBuilder: (context, i) {
+                    final goal = widget.goals[i];
+                    return GoalCard(
+                      key: ValueKey(goal.id),
+                      goal: goal,
+                      onToggle: () => widget.onToggle(goal.id),
+                      onDelete: () => widget.onDelete(goal.id),
+                      onEdit: () => _showGoalDialog(existing: goal),
+                    );
+                  },
+                ),
+        ),
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          decoration: BoxDecoration(
+            border: Border(
+                top: BorderSide(color: theme.colorScheme.outline.withOpacity(0.1))),
+          ),
+          child: SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _showGoalDialog(),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add Goal'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                side: BorderSide(color: theme.colorScheme.outline.withOpacity(0.4)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
           ),
         ),
       ],
