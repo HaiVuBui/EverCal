@@ -695,7 +695,7 @@ class _CalendarHomeState extends State<CalendarHome> {
     return file;
   }
 
-  Future<void> _showAddMenu() async {
+  Future<void> _showSettings() async {
     if (!mounted) return;
 
     showModalBottomSheet(
@@ -715,16 +715,6 @@ class _CalendarHomeState extends State<CalendarHome> {
                         color: theme.colorScheme.onSurfaceVariant),
                     title: const Text('Switch Theme'),
                     onTap: widget.onThemeToggle,
-                  ),
-                  const Divider(),
-                  ListTile(
-                    leading: Icon(Icons.edit_calendar,
-                        color: theme.colorScheme.primary),
-                    title: const Text('Add Event'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showAddEventDialog();
-                    },
                   ),
                   const Divider(),
                   SwitchListTile(
@@ -1551,12 +1541,6 @@ class _CalendarHomeState extends State<CalendarHome> {
         return KeyEventResult.ignored;
       },
       child: Scaffold(
-      floatingActionButton: ExpressiveButton(
-        size: 56,
-        color: theme.colorScheme.primary,
-        onTap: _showAddMenu,
-        child: Icon(Icons.add, color: theme.colorScheme.onPrimary),
-      ),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final isWide = constraints.maxWidth > 600;
@@ -1723,14 +1707,25 @@ class _CalendarHomeState extends State<CalendarHome> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  fmtDayName.format(_selectedDate).toUpperCase(),
-                  style: theme.textTheme.displaySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 2.0,
-                    fontSize: 24,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      fmtDayName.format(_selectedDate).toUpperCase(),
+                      style: theme.textTheme.displaySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 2.0,
+                        fontSize: 24,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.tune_rounded),
+                      onPressed: _showSettings,
+                      tooltip: 'Settings',
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ],
                 ),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -1921,26 +1916,55 @@ class _CalendarHomeState extends State<CalendarHome> {
                 onDelete: _deleteGoal,
                 onEdit: _editGoal,
               ),
-            SidebarTab.events => events.isEmpty
-                ? Center(
-                    child: Text('No Events',
-                        style: TextStyle(
-                            color: theme.colorScheme.onSurfaceVariant
-                                .withOpacity(0.5))))
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 16),
-                    itemCount: events.length,
-                    itemBuilder: (context, index) => EventCard(
-                      event: events[index],
-                      use24Hour: _use24Hour,
-                      onEdit: _isLocalKhalEvent(events[index])
-                          ? () => _showEditEventDialog(events[index])
-                          : null,
-                      onDelete: () =>
-                          _deleteEvent(_selectedDate, events[index]),
+            SidebarTab.events => Column(
+                children: [
+                  Expanded(
+                    child: events.isEmpty
+                        ? Center(
+                            child: Text('No Events',
+                                style: TextStyle(
+                                    color: theme.colorScheme.onSurfaceVariant
+                                        .withOpacity(0.5))))
+                        : ListView.builder(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 16),
+                            itemCount: events.length,
+                            itemBuilder: (context, index) => EventCard(
+                              event: events[index],
+                              use24Hour: _use24Hour,
+                              onEdit: _isLocalKhalEvent(events[index])
+                                  ? () => _showEditEventDialog(events[index])
+                                  : null,
+                              onDelete: () =>
+                                  _deleteEvent(_selectedDate, events[index]),
+                            ),
+                          ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                    decoration: BoxDecoration(
+                      border: Border(
+                          top: BorderSide(
+                              color: theme.colorScheme.outline.withOpacity(0.1))),
+                    ),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _showAddEventDialog,
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Add Event'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          side: BorderSide(
+                              color: theme.colorScheme.outline.withOpacity(0.4)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
                     ),
                   ),
+                ],
+              ),
           },
         ),
       ],
