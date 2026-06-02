@@ -34,10 +34,13 @@ class TodoItem {
   });
 
   TodoItem copyWith(
-      {bool? isCompleted, String? linkedEventId, bool clearLink = false}) {
+      {String? title,
+      bool? isCompleted,
+      String? linkedEventId,
+      bool clearLink = false}) {
     return TodoItem(
       id: id,
-      title: title,
+      title: title ?? this.title,
       isCompleted: isCompleted ?? this.isCompleted,
       linkedEventId: clearLink ? null : (linkedEventId ?? this.linkedEventId),
       createdAt: createdAt,

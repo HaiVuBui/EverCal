@@ -386,6 +386,24 @@ class _CalendarHomeState extends State<CalendarHome> {
     _saveTodos();
   }
 
+  void _reorderTodos(int oldIndex, int newIndex) {
+    if (newIndex > oldIndex) newIndex--;
+    setState(() {
+      final t = _todos.removeAt(oldIndex);
+      _todos.insert(newIndex, t);
+    });
+    _saveTodos();
+  }
+
+  void _editTodo(String id, String newTitle) {
+    final idx = _todos.indexWhere((t) => t.id == id);
+    if (idx == -1) return;
+    setState(() {
+      _todos[idx] = _todos[idx].copyWith(title: newTitle);
+    });
+    _saveTodos();
+  }
+
   // Khal Utils
 
   String _xdgConfigHome() {
@@ -1774,6 +1792,8 @@ class _CalendarHomeState extends State<CalendarHome> {
                   onToggle: _toggleTodo,
                   onDelete: _deleteTodo,
                   onLink: _linkTodoEvent,
+                  onReorder: _reorderTodos,
+                  onEdit: _editTodo,
                   onJumpToEvent: (event) => setState(() {
                     _selectedDate = _normalizeDate(event.startTime);
                     _focusedMonth = _normalizeDate(event.startTime);

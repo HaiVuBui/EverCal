@@ -9,6 +9,21 @@ import 'models.dart';
 import 'utils.dart'; // for fmtTime
 import 'package:url_launcher/url_launcher.dart';
 
+final _editActionButtonStyle = TextButton.styleFrom(
+  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+  minimumSize: Size.zero,
+  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+);
+
+Widget _menuRow(ThemeData theme, IconData icon, String label, Color iconColor) =>
+    Row(children: [
+      Icon(icon, size: 16, color: iconColor),
+      const SizedBox(width: 10),
+      Text(label,
+          style: TextStyle(
+              color: iconColor == theme.colorScheme.error ? iconColor : null)),
+    ]);
+
 // Button based on M3 expressive guidelines
 class ExpressiveButton extends StatefulWidget {
   final Widget child;
@@ -284,12 +299,6 @@ class _EventCardState extends State<EventCard> {
         ? 'All day'
         : '${fmt.format(widget.event.startTime)} – ${fmt.format(widget.event.endTime)}';
 
-    Widget menuRow(IconData icon, String label, Color iconColor) => Row(children: [
-          Icon(icon, size: 16, color: iconColor),
-          const SizedBox(width: 10),
-          Text(label, style: TextStyle(color: iconColor == theme.colorScheme.error ? iconColor : null)),
-        ]);
-
     return GestureDetector(
       onSecondaryTapUp: (details) {
         final box = context.findRenderObject() as RenderBox?;
@@ -302,11 +311,11 @@ class _EventCardState extends State<EventCard> {
             if (widget.onEdit != null)
               PopupMenuItem(
                 onTap: widget.onEdit,
-                child: menuRow(Icons.edit_outlined, 'Edit', theme.colorScheme.primary),
+                child: _menuRow(theme,Icons.edit_outlined, 'Edit', theme.colorScheme.primary),
               ),
             PopupMenuItem(
               onTap: widget.onDelete,
-              child: menuRow(Icons.delete_outline, 'Delete', theme.colorScheme.error),
+              child: _menuRow(theme,Icons.delete_outline, 'Delete', theme.colorScheme.error),
             ),
           ],
         );
@@ -566,6 +575,11 @@ class TodoCard extends StatelessWidget {
   final VoidCallback? onJumpToEvent;
   final VoidCallback? onAttachEvent;
   final VoidCallback? onRemoveEvent;
+  final VoidCallback? onEdit;
+  final bool isEditing;
+  final TextEditingController? editController;
+  final VoidCallback? onEditSubmit;
+  final VoidCallback? onEditCancel;
 
   const TodoCard({
     super.key,
@@ -576,6 +590,11 @@ class TodoCard extends StatelessWidget {
     this.onJumpToEvent,
     this.onAttachEvent,
     this.onRemoveEvent,
+    this.onEdit,
+    this.isEditing = false,
+    this.editController,
+    this.onEditSubmit,
+    this.onEditCancel,
   });
 
   @override
@@ -584,50 +603,48 @@ class TodoCard extends StatelessWidget {
     final done = todo.isCompleted;
 
     return GestureDetector(
-      onSecondaryTapUp: (details) {
-        final box = context.findRenderObject() as RenderBox?;
-        final offset =
-            box?.localToGlobal(details.localPosition) ?? details.globalPosition;
-        showMenu(
-          context: context,
-          position: RelativeRect.fromLTRB(
-              offset.dx, offset.dy, offset.dx + 1, offset.dy + 1),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          items: [
-            if (onAttachEvent != null)
-              PopupMenuItem(
-                onTap: onAttachEvent,
-                child: Row(children: [
-                  Icon(Icons.event_outlined,
-                      size: 16, color: theme.colorScheme.primary),
-                  const SizedBox(width: 10),
-                  Text(linkedEvent != null ? 'Change event' : 'Attach event'),
-                ]),
-              ),
-            if (linkedEvent != null && onRemoveEvent != null)
-              PopupMenuItem(
-                onTap: onRemoveEvent,
-                child: Row(children: [
-                  Icon(Icons.link_off,
-                      size: 16, color: theme.colorScheme.onSurfaceVariant),
-                  const SizedBox(width: 10),
-                  const Text('Remove event'),
-                ]),
-              ),
-            PopupMenuItem(
-              onTap: onDelete,
-              child: Row(children: [
-                Icon(Icons.delete_outline,
-                    size: 16, color: theme.colorScheme.error),
-                const SizedBox(width: 10),
-                Text('Delete',
-                    style: TextStyle(color: theme.colorScheme.error)),
-              ]),
-            ),
-          ],
-        );
-      },
+      onSecondaryTapUp: isEditing
+          ? null
+          : (details) {
+              final box = context.findRenderObject() as RenderBox?;
+              final offset = box?.localToGlobal(details.localPosition) ??
+                  details.globalPosition;
+              showMenu(
+                context: context,
+                position: RelativeRect.fromLTRB(
+                    offset.dx, offset.dy, offset.dx + 1, offset.dy + 1),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                items: [
+                  if (onEdit != null)
+                    PopupMenuItem(
+                      onTap: onEdit,
+                      child: _menuRow(theme, Icons.edit_outlined, 'Edit',
+                          theme.colorScheme.onSurface),
+                    ),
+                  if (onAttachEvent != null)
+                    PopupMenuItem(
+                      onTap: onAttachEvent,
+                      child: _menuRow(
+                          theme,
+                          Icons.event_outlined,
+                          linkedEvent != null ? 'Change event' : 'Attach event',
+                          theme.colorScheme.primary),
+                    ),
+                  if (linkedEvent != null && onRemoveEvent != null)
+                    PopupMenuItem(
+                      onTap: onRemoveEvent,
+                      child: _menuRow(theme, Icons.link_off, 'Remove event',
+                          theme.colorScheme.onSurfaceVariant),
+                    ),
+                  PopupMenuItem(
+                    onTap: onDelete,
+                    child: _menuRow(theme, Icons.delete_outline, 'Delete',
+                        theme.colorScheme.error),
+                  ),
+                ],
+              );
+            },
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
@@ -635,7 +652,7 @@ class TodoCard extends StatelessWidget {
           children: [
             Checkbox(
               value: done,
-              onChanged: (_) => onToggle(),
+              onChanged: isEditing ? null : (_) => onToggle(),
               shape:
                   RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -646,19 +663,59 @@ class TodoCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 10),
-                    child: Text(
-                      todo.title,
-                      style: TextStyle(
-                        decoration: done ? TextDecoration.lineThrough : null,
-                        color: done
-                            ? theme.colorScheme.onSurface.withOpacity(0.4)
-                            : theme.colorScheme.onSurface,
+                  if (isEditing)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: TextField(
+                        controller: editController,
+                        autofocus: true,
+                        style: const TextStyle(fontSize: 14),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 6),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                        onSubmitted: (_) => onEditSubmit?.call(),
+                      ),
+                    )
+                  else
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Text(
+                        todo.title,
+                        style: TextStyle(
+                          decoration: done ? TextDecoration.lineThrough : null,
+                          color: done
+                              ? theme.colorScheme.onSurface.withOpacity(0.4)
+                              : theme.colorScheme.onSurface,
+                        ),
                       ),
                     ),
-                  ),
-                  if (linkedEvent != null)
+                  if (isEditing)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextButton(
+                            onPressed: onEditSubmit,
+                            style: _editActionButtonStyle,
+                            child: const Text('Save',
+                                style: TextStyle(fontSize: 12)),
+                          ),
+                          TextButton(
+                            onPressed: onEditCancel,
+                            style: _editActionButtonStyle,
+                            child: const Text('Cancel',
+                                style: TextStyle(fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (!isEditing && linkedEvent != null)
                     Builder(builder: (_) {
                       final color = eventColor(linkedEvent!.title);
                       return Padding(
@@ -717,6 +774,8 @@ class TodosPanel extends StatefulWidget {
   final Function(String id) onDelete;
   final Function(CalendarEvent event) onJumpToEvent;
   final Function(String todoId, String? eventId) onLink;
+  final Function(int oldIndex, int newIndex) onReorder;
+  final Function(String id, String newTitle) onEdit;
 
   const TodosPanel({
     super.key,
@@ -728,6 +787,8 @@ class TodosPanel extends StatefulWidget {
     required this.onDelete,
     required this.onJumpToEvent,
     required this.onLink,
+    required this.onReorder,
+    required this.onEdit,
   });
 
   @override
@@ -736,7 +797,9 @@ class TodosPanel extends StatefulWidget {
 
 class _TodosPanelState extends State<TodosPanel> {
   final _controller = TextEditingController();
+  final _editController = TextEditingController();
   String? _selectedEventId;
+  String? _editingTodoId;
   late Map<String, CalendarEvent> _eventById;
 
   @override
@@ -758,9 +821,25 @@ class _TodosPanelState extends State<TodosPanel> {
           for (final e in events) e.id: e,
       };
 
+  void _startEdit(TodoItem todo) {
+    _editController.text = todo.title;
+    setState(() => _editingTodoId = todo.id);
+  }
+
+  void _submitEdit(String todoId) {
+    final newTitle = _editController.text.trim();
+    if (newTitle.isNotEmpty) widget.onEdit(todoId, newTitle);
+    setState(() => _editingTodoId = null);
+  }
+
+  void _cancelEdit() {
+    setState(() => _editingTodoId = null);
+  }
+
   @override
   void dispose() {
     _controller.dispose();
+    _editController.dispose();
     super.dispose();
   }
 
@@ -856,16 +935,19 @@ class _TodosPanelState extends State<TodosPanel> {
                             .withOpacity(0.5)),
                   ),
                 )
-              : ListView.builder(
+              : ReorderableListView.builder(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   itemCount: widget.todos.length,
+                  onReorder: widget.onReorder,
                   itemBuilder: (context, i) {
                     final todo = widget.todos[i];
                     final linked = todo.linkedEventId != null
                         ? _eventById[todo.linkedEventId]
                         : null;
+                    final editing = _editingTodoId == todo.id;
                     return TodoCard(
+                      key: ValueKey(todo.id),
                       todo: todo,
                       linkedEvent: linked,
                       onToggle: () => widget.onToggle(todo.id),
@@ -877,6 +959,11 @@ class _TodosPanelState extends State<TodosPanel> {
                       onRemoveEvent: linked != null
                           ? () => widget.onLink(todo.id, null)
                           : null,
+                      onEdit: () => _startEdit(todo),
+                      isEditing: editing,
+                      editController: _editController,
+                      onEditSubmit: () => _submitEdit(todo.id),
+                      onEditCancel: _cancelEdit,
                     );
                   },
                 ),
