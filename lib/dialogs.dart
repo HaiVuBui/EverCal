@@ -224,6 +224,10 @@ class _AddEventDialogState extends State<AddEventDialog> {
     'YEARLY': 'Yearly',
   };
 
+  String _repeatEnd = 'never'; // 'never', 'until', 'count'
+  DateTime _untilDate = DateTime.now().add(const Duration(days: 30));
+  final _countController = TextEditingController(text: '10');
+
   late DateTime startDate;
   late TimeOfDay startTime;
   late DateTime endDate;
@@ -258,6 +262,15 @@ class _AddEventDialogState extends State<AddEventDialog> {
       } else if (existing.rrule != null && existing.rrule!.isNotEmpty) {
         final match = RegExp(r'FREQ=([^;]+)').firstMatch(existing.rrule!);
         selectedFreq = match?.group(1)?.toUpperCase() ?? 'NONE';
+        final untilMatch = RegExp(r'UNTIL=([^;]+)').firstMatch(existing.rrule!);
+        final countMatch = RegExp(r'COUNT=([^;]+)').firstMatch(existing.rrule!);
+        if (untilMatch != null) {
+          _repeatEnd = 'until';
+          _untilDate = _parseUntilDate(untilMatch.group(1)!) ?? DateTime.now().add(const Duration(days: 30));
+        } else if (countMatch != null) {
+          _repeatEnd = 'count';
+          _countController.text = countMatch.group(1)!;
+        }
       }
     } else {
       final initialHour = base.hour > 0 ? base.hour : now.hour;
@@ -270,6 +283,24 @@ class _AddEventDialogState extends State<AddEventDialog> {
 
     endDate = DateTime(end.year, end.month, end.day);
     endTime = TimeOfDay(hour: end.hour, minute: end.minute);
+
+  }
+
+  static DateTime? _parseUntilDate(String s) {
+    final clean = s.replaceAll('Z', '');
+    if (clean.length >= 15) {
+      try { return fmtIcsTime.parse(clean.substring(0, 15)); } catch (_) {}
+    }
+    if (clean.length >= 8) {
+      try {
+        return DateTime(
+          int.parse(clean.substring(0, 4)),
+          int.parse(clean.substring(4, 6)),
+          int.parse(clean.substring(6, 8)),
+        );
+      } catch (_) {}
+    }
+    return null;
   }
 
   @override
@@ -277,7 +308,18 @@ class _AddEventDialogState extends State<AddEventDialog> {
     titleController.dispose();
     locationController.dispose();
     descriptionController.dispose();
+    _countController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickUntilDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _untilDate,
+      firstDate: startDate,
+      lastDate: DateTime(2040),
+    );
+    if (picked != null) setState(() => _untilDate = picked);
   }
 
   Future<void> pickDateTime(bool isStart) async {
@@ -417,13 +459,81 @@ class _AddEventDialogState extends State<AddEventDialog> {
                           }).toList(),
                           onChanged: _isSingleOccurrenceEdit
                               ? null
-                              : (val) => setState(() => selectedFreq = val),
+                              : (val) => setState(() {
+                                    selectedFreq = val;
+                                    if (val == 'NONE') _repeatEnd = 'never';
+                                  }),
                         ),
                       ],
                     ),
                   ),
                 ],
               ),
+
+              if (selectedFreq != null && selectedFreq != 'NONE' && !_isSingleOccurrenceEdit) ...[
+                const SizedBox(height: 16),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _dialogFieldLabel(theme, 'End repeat'),
+                          DropdownButtonFormField<String>(
+                            value: _repeatEnd,
+                            decoration: inputDecor,
+                            dropdownColor: theme.colorScheme.surfaceContainerHigh,
+                            items: const [
+                              DropdownMenuItem(value: 'never', child: Text('Never', style: TextStyle(fontSize: 14))),
+                              DropdownMenuItem(value: 'until', child: Text('On date', style: TextStyle(fontSize: 14))),
+                              DropdownMenuItem(value: 'count', child: Text('After N times', style: TextStyle(fontSize: 14))),
+                            ],
+                            onChanged: (val) => setState(() => _repeatEnd = val ?? 'never'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_repeatEnd != 'never') ...[
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _dialogFieldLabel(theme, _repeatEnd == 'until' ? 'Until' : 'Occurrences'),
+                            if (_repeatEnd == 'until')
+                              InkWell(
+                                onTap: _pickUntilDate,
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: theme.colorScheme.outline.withOpacity(0.5)),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(fmtGridDay.format(_untilDate), style: const TextStyle(fontSize: 14)),
+                                      Icon(Icons.calendar_today, size: 14, color: theme.colorScheme.primary),
+                                    ],
+                                  ),
+                                ),
+                              )
+                            else
+                              TextField(
+                                controller: _countController,
+                                decoration: inputDecor,
+                                keyboardType: TextInputType.number,
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
 
               const SizedBox(height: 20),
               // ROW: STARTS + ENDS
@@ -471,7 +581,15 @@ class _AddEventDialogState extends State<AddEventDialog> {
 
             String? rrule;
             if (selectedFreq != null && selectedFreq != 'NONE') {
-              rrule = 'FREQ=$selectedFreq';
+              final sb = StringBuffer('FREQ=$selectedFreq');
+              if (_repeatEnd == 'until') {
+                final endOfDay = DateTime(_untilDate.year, _untilDate.month, _untilDate.day, 23, 59, 59);
+                sb.write(';UNTIL=${fmtIcsTime.format(endOfDay)}');
+              } else if (_repeatEnd == 'count') {
+                final count = int.tryParse(_countController.text.trim()) ?? 10;
+                if (count > 0) sb.write(';COUNT=$count');
+              }
+              rrule = sb.toString();
             }
 
             final existing = widget.existingEvent;
