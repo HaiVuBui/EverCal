@@ -595,15 +595,22 @@ class _CalendarHomeState extends State<CalendarHome> {
     final events = <DateTime, List<CalendarEvent>>{};
     final discoveredPaths = <String>[];
     try {
+      final paths = <String>[];
       final cfgFile = await _findKhalConfigFile();
-      if (cfgFile == null) return events;
-
-      final raw = await cfgFile.readAsLines();
-      final paths = _extractKhalCalendarPaths(raw);
+      if (cfgFile != null) {
+        paths.addAll(_extractKhalCalendarPaths(await cfgFile.readAsLines()));
+      }
 
       final expanded = <String>[];
       for (final p in paths) {
         expanded.addAll(await _expandCalendarPathPattern(p));
+      }
+
+      // Always read our own local calendar, independent of khal config, so
+      // events created in EverCal are visible even with no khal config present.
+      final localPath = _localKhalCalendarPath();
+      if (!expanded.any((p) => _normDir(p) == _normDir(localPath))) {
+        expanded.add(localPath);
       }
 
       final now = DateTime.now();
