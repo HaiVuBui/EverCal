@@ -1541,7 +1541,9 @@ class _CalendarHomeState extends State<CalendarHome> {
         return KeyEventResult.ignored;
       },
       child: Scaffold(
-      body: LayoutBuilder(
+      body: Stack(
+        children: [
+          LayoutBuilder(
         builder: (context, constraints) {
           final isWide = constraints.maxWidth > 600;
           if (isWide) {
@@ -1605,6 +1607,18 @@ class _CalendarHomeState extends State<CalendarHome> {
             );
           }
         },
+      ),
+          Positioned(
+            top: 0,
+            right: 0,
+            child: IconButton(
+              onPressed: () => exit(0),
+              icon: const Icon(Icons.close),
+              tooltip: 'Close',
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
       ),
     ),
     );
