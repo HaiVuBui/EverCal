@@ -96,50 +96,71 @@ class MonthView extends StatelessWidget {
                       (events[DateTime(date.year, date.month, date.day)] ??
                           const []).toList();
 
-                  return Center(
-                    child: ExpressiveButton(
-                      size: cellHeight < 50 ? cellHeight : 50,
-                      color: isSelected
-                          ? theme.colorScheme.primary
-                          : Colors.transparent,
-                      isSelected: isSelected,
-                      side: isToday && !isSelected
-                          ? BorderSide(
-                              color: theme.colorScheme.primary, width: 1)
-                          : BorderSide.none,
-                      onTap: () => onDateSelected(date),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              '$dayNumber',
-                              style: TextStyle(
-                                color: isSelected
-                                    ? theme.colorScheme.onPrimary
-                                    : theme.colorScheme.onSurface,
-                                fontWeight: isSelected || isToday
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
+                  final ld = lunarDate(date);
+                  final showFull = ld.day == 1 || dayNumber == 1;
+                  return Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ExpressiveButton(
+                        size: cellHeight < 50 ? cellHeight : 50,
+                        color: isSelected
+                            ? theme.colorScheme.primary
+                            : Colors.transparent,
+                        isSelected: isSelected,
+                        side: isToday && !isSelected
+                            ? BorderSide(
+                                color: theme.colorScheme.primary, width: 1)
+                            : BorderSide.none,
+                        onTap: () => onDateSelected(date),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                '$dayNumber',
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? theme.colorScheme.onPrimary
+                                      : theme.colorScheme.onSurface,
+                                  fontWeight: isSelected || isToday
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                ),
                               ),
                             ),
-                          ),
-                          if (dayEvents.isNotEmpty)
-                            Container(
-                              margin: const EdgeInsets.only(top: 4),
-                              width: 4,
-                              height: 4,
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? theme.colorScheme.onPrimary
-                                    : theme.colorScheme.primary,
-                                shape: BoxShape.circle,
+                            if (dayEvents.isNotEmpty)
+                              Container(
+                                margin: const EdgeInsets.only(top: 4),
+                                width: 4,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? theme.colorScheme.onPrimary
+                                      : theme.colorScheme.primary,
+                                  shape: BoxShape.circle,
+                                ),
                               ),
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
+                      if (cellHeight > 52)
+                        Text(
+                          lunarLabel(ld, showFull: showFull),
+                          style: TextStyle(
+                            fontSize: 11,
+                            height: 1.2,
+                            color: lunarSpecial(ld)
+                                ? theme.colorScheme.secondary
+                                : theme.colorScheme.onSurfaceVariant
+                                    .withOpacity(0.55),
+                            fontWeight: lunarSpecial(ld)
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                          ),
+                        ),
+                    ],
                   );
                 },
               ),
@@ -218,6 +239,8 @@ class WeekView extends StatelessWidget {
                   day.month == selectedDate.month &&
                   day.year == selectedDate.year;
 
+              final ld = lunarDate(day);
+              final showFull = ld.day == 1 || index == 0;
               return Expanded(
                 child: Center(
                   child: ExpressiveButton(
@@ -256,6 +279,19 @@ class WeekView extends StatelessWidget {
                                 : (isToday
                                     ? theme.colorScheme.primary
                                     : theme.colorScheme.onSurface),
+                          ),
+                        ),
+                        Text(
+                          lunarLabel(ld, showFull: showFull),
+                          style: TextStyle(
+                            fontSize: 10,
+                            height: 1.4,
+                            color: isSelected
+                                ? theme.colorScheme.onPrimary.withOpacity(0.7)
+                                : lunarSpecial(ld)
+                                    ? theme.colorScheme.secondary
+                                    : theme.colorScheme.onSurfaceVariant
+                                        .withOpacity(0.55),
                           ),
                         ),
                       ],
