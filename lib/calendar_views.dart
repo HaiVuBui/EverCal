@@ -592,19 +592,15 @@ class WeekView extends StatelessWidget {
             builder: (context) => GestureDetector(
             onSecondaryTapUp: onDeleteEvent == null
                 ? null
-                : (details) => showEventContextMenu(context, details, [
-                      if (canEditEvent?.call(event) ?? true)
-                        PopupMenuItem(
-                          onTap: () => onEditEvent?.call(event),
-                          child: eventMenuRow(theme, Icons.edit_outlined,
-                              'Edit', theme.colorScheme.primary),
-                        ),
-                      PopupMenuItem(
-                        onTap: () => onDeleteEvent!(event),
-                        child: eventMenuRow(theme, Icons.delete_outline,
-                            'Delete', theme.colorScheme.error),
-                      ),
-                    ]),
+                : (details) => showEventContextMenu(
+                      context,
+                      details,
+                      editDeleteMenuItems(theme,
+                          onEdit: (canEditEvent?.call(event) ?? true)
+                              ? () => onEditEvent?.call(event)
+                              : null,
+                          onDelete: () => onDeleteEvent!(event)),
+                    ),
             child: BouncyButton(
             onTap: () {
               onDateSelected(event.startTime);

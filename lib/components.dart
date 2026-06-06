@@ -40,6 +40,22 @@ Widget eventMenuRow(
               color: iconColor == theme.colorScheme.error ? iconColor : null)),
     ]);
 
+List<PopupMenuEntry<Object?>> editDeleteMenuItems(ThemeData theme,
+        {VoidCallback? onEdit, required VoidCallback onDelete}) =>
+    [
+      if (onEdit != null)
+        PopupMenuItem(
+          onTap: onEdit,
+          child: eventMenuRow(
+              theme, Icons.edit_outlined, 'Edit', theme.colorScheme.primary),
+        ),
+      PopupMenuItem(
+        onTap: onDelete,
+        child: eventMenuRow(
+            theme, Icons.delete_outline, 'Delete', theme.colorScheme.error),
+      ),
+    ];
+
 // Button based on M3 expressive guidelines
 class ExpressiveButton extends StatefulWidget {
   final Widget child;
@@ -330,17 +346,9 @@ class _EventCardState extends State<EventCard> {
     }
 
     return GestureDetector(
-      onSecondaryTapUp: (details) => showEventContextMenu(context, details, [
-        if (widget.onEdit != null)
-          PopupMenuItem(
-            onTap: widget.onEdit,
-            child: eventMenuRow(theme, Icons.edit_outlined, 'Edit', theme.colorScheme.primary),
-          ),
-        PopupMenuItem(
-          onTap: widget.onDelete,
-          child: eventMenuRow(theme, Icons.delete_outline, 'Delete', theme.colorScheme.error),
-        ),
-      ]),
+      onSecondaryTapUp: (details) => showEventContextMenu(context, details,
+          editDeleteMenuItems(theme,
+              onEdit: widget.onEdit, onDelete: widget.onDelete)),
       child: Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Material(
@@ -1080,19 +1088,8 @@ class GoalCard extends StatelessWidget {
             : '${fmtGridDay.format(goal.date!)}, ${goal.date!.year}';
 
     return GestureDetector(
-      onSecondaryTapUp: (details) => showEventContextMenu(context, details, [
-        if (onEdit != null)
-          PopupMenuItem(
-            onTap: onEdit,
-            child: eventMenuRow(theme, Icons.edit_outlined, 'Edit',
-                theme.colorScheme.primary),
-          ),
-        PopupMenuItem(
-          onTap: onDelete,
-          child: eventMenuRow(theme, Icons.delete_outline, 'Delete',
-              theme.colorScheme.error),
-        ),
-      ]),
+      onSecondaryTapUp: (details) => showEventContextMenu(context, details,
+          editDeleteMenuItems(theme, onEdit: onEdit, onDelete: onDelete)),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
