@@ -1040,7 +1040,10 @@ class _CalendarHomeState extends State<CalendarHome> {
 
   Future<void> _setViewMode(CalendarViewMode mode) async {
     if (_viewMode == mode) return;
-    setState(() => _viewMode = mode);
+    setState(() {
+      _viewMode = mode;
+      if (mode == CalendarViewMode.week) _focusedMonth = _selectedDate;
+    });
     await _patchSetting('calendar_view', mode.name);
   }
 
