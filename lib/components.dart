@@ -16,7 +16,7 @@ final _editActionButtonStyle = TextButton.styleFrom(
   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
 );
 
-void _showContextMenu(BuildContext context, TapUpDetails details,
+void showEventContextMenu(BuildContext context, TapUpDetails details,
     List<PopupMenuEntry<Object?>> items) {
   final box = context.findRenderObject() as RenderBox?;
   final offset =
@@ -30,7 +30,8 @@ void _showContextMenu(BuildContext context, TapUpDetails details,
   );
 }
 
-Widget _menuRow(ThemeData theme, IconData icon, String label, Color iconColor) =>
+Widget eventMenuRow(
+        ThemeData theme, IconData icon, String label, Color iconColor) =>
     Row(children: [
       Icon(icon, size: 16, color: iconColor),
       const SizedBox(width: 10),
@@ -329,15 +330,15 @@ class _EventCardState extends State<EventCard> {
     }
 
     return GestureDetector(
-      onSecondaryTapUp: (details) => _showContextMenu(context, details, [
+      onSecondaryTapUp: (details) => showEventContextMenu(context, details, [
         if (widget.onEdit != null)
           PopupMenuItem(
             onTap: widget.onEdit,
-            child: _menuRow(theme, Icons.edit_outlined, 'Edit', theme.colorScheme.primary),
+            child: eventMenuRow(theme, Icons.edit_outlined, 'Edit', theme.colorScheme.primary),
           ),
         PopupMenuItem(
           onTap: widget.onDelete,
-          child: _menuRow(theme, Icons.delete_outline, 'Delete', theme.colorScheme.error),
+          child: eventMenuRow(theme, Icons.delete_outline, 'Delete', theme.colorScheme.error),
         ),
       ]),
       child: Container(
@@ -625,17 +626,17 @@ class TodoCard extends StatelessWidget {
     return GestureDetector(
       onSecondaryTapUp: isEditing
           ? null
-          : (details) => _showContextMenu(context, details, [
+          : (details) => showEventContextMenu(context, details, [
                 if (onEdit != null)
                   PopupMenuItem(
                     onTap: onEdit,
-                    child: _menuRow(theme, Icons.edit_outlined, 'Edit',
+                    child: eventMenuRow(theme, Icons.edit_outlined, 'Edit',
                         theme.colorScheme.onSurface),
                   ),
                 if (onAttachEvent != null)
                   PopupMenuItem(
                     onTap: onAttachEvent,
-                    child: _menuRow(
+                    child: eventMenuRow(
                         theme,
                         Icons.event_outlined,
                         linkedEvent != null ? 'Change event' : 'Attach event',
@@ -644,12 +645,12 @@ class TodoCard extends StatelessWidget {
                 if (linkedEvent != null && onRemoveEvent != null)
                   PopupMenuItem(
                     onTap: onRemoveEvent,
-                    child: _menuRow(theme, Icons.link_off, 'Remove event',
+                    child: eventMenuRow(theme, Icons.link_off, 'Remove event',
                         theme.colorScheme.onSurfaceVariant),
                   ),
                 PopupMenuItem(
                   onTap: onDelete,
-                  child: _menuRow(theme, Icons.delete_outline, 'Delete',
+                  child: eventMenuRow(theme, Icons.delete_outline, 'Delete',
                       theme.colorScheme.error),
                 ),
               ]),
@@ -1079,16 +1080,16 @@ class GoalCard extends StatelessWidget {
             : '${fmtGridDay.format(goal.date!)}, ${goal.date!.year}';
 
     return GestureDetector(
-      onSecondaryTapUp: (details) => _showContextMenu(context, details, [
+      onSecondaryTapUp: (details) => showEventContextMenu(context, details, [
         if (onEdit != null)
           PopupMenuItem(
             onTap: onEdit,
-            child: _menuRow(theme, Icons.edit_outlined, 'Edit',
+            child: eventMenuRow(theme, Icons.edit_outlined, 'Edit',
                 theme.colorScheme.primary),
           ),
         PopupMenuItem(
           onTap: onDelete,
-          child: _menuRow(theme, Icons.delete_outline, 'Delete',
+          child: eventMenuRow(theme, Icons.delete_outline, 'Delete',
               theme.colorScheme.error),
         ),
       ]),

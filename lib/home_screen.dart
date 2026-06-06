@@ -1644,6 +1644,9 @@ class _CalendarHomeState extends State<CalendarHome> {
       use24Hour: _use24Hour,
       onTimeSlotTapped: (dt) => _showAddEventDialog(initialDateTime: dt),
       onDateSelected: (d) => setState(() => _selectedDate = d),
+      canEditEvent: _isLocalKhalEvent,
+      onEditEvent: _showEditEventDialog,
+      onDeleteEvent: (e) => _deleteEvent(e.startTime, e),
     );
   }
 

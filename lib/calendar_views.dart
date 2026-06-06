@@ -182,6 +182,9 @@ class WeekView extends StatelessWidget {
   final bool weekStartsOnMonday;
   final bool use24Hour;
   final ValueChanged<DateTime>? onTimeSlotTapped;
+  final ValueChanged<CalendarEvent>? onEditEvent;
+  final ValueChanged<CalendarEvent>? onDeleteEvent;
+  final bool Function(CalendarEvent)? canEditEvent;
 
   const WeekView({
     super.key,
@@ -193,6 +196,9 @@ class WeekView extends StatelessWidget {
     this.weekStartsOnMonday = false,
     this.use24Hour = false,
     this.onTimeSlotTapped,
+    this.onEditEvent,
+    this.onDeleteEvent,
+    this.canEditEvent,
   });
 
   @override
@@ -582,7 +588,24 @@ class WeekView extends StatelessWidget {
           left: laneIdx * eventWidth,
           width: eventWidth,
           height: height,
-          child: BouncyButton(
+          child: Builder(
+            builder: (context) => GestureDetector(
+            onSecondaryTapUp: onDeleteEvent == null
+                ? null
+                : (details) => showEventContextMenu(context, details, [
+                      if (canEditEvent?.call(event) ?? true)
+                        PopupMenuItem(
+                          onTap: () => onEditEvent?.call(event),
+                          child: eventMenuRow(theme, Icons.edit_outlined,
+                              'Edit', theme.colorScheme.primary),
+                        ),
+                      PopupMenuItem(
+                        onTap: () => onDeleteEvent!(event),
+                        child: eventMenuRow(theme, Icons.delete_outline,
+                            'Delete', theme.colorScheme.error),
+                      ),
+                    ]),
+            child: BouncyButton(
             onTap: () {
               onDateSelected(event.startTime);
             },
@@ -631,6 +654,8 @@ class WeekView extends StatelessWidget {
                 ),
               ),
             ),
+          ),
+          ),
           ),
         ));
       }
