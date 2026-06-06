@@ -1946,6 +1946,7 @@ class _CalendarHomeState extends State<CalendarHome> {
                             itemBuilder: (context, index) => EventCard(
                               event: events[index],
                               use24Hour: _use24Hour,
+                              viewDate: _selectedDate,
                               onEdit: _isLocalKhalEvent(events[index])
                                   ? () => _showEditEventDialog(events[index])
                                   : null,

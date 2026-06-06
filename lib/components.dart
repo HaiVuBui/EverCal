@@ -288,6 +288,7 @@ class EventCard extends StatefulWidget {
   final VoidCallback onDelete;
   final VoidCallback? onEdit;
   final bool use24Hour;
+  final DateTime? viewDate;
 
   const EventCard({
     super.key,
@@ -295,6 +296,7 @@ class EventCard extends StatefulWidget {
     required this.onDelete,
     this.onEdit,
     this.use24Hour = false,
+    this.viewDate,
   });
 
   @override
@@ -310,9 +312,21 @@ class _EventCardState extends State<EventCard> {
     final color = eventColor(widget.event.title);
 
     final fmt = widget.use24Hour ? fmtTime24 : fmtTime;
-    final timeLabel = widget.event.isAllDay
-        ? 'All day'
-        : '${fmt.format(widget.event.startTime)} – ${fmt.format(widget.event.endTime)}';
+    String timeLabel;
+    if (widget.event.isAllDay) {
+      timeLabel = 'All day';
+    } else {
+      final vd = widget.viewDate;
+      bool sameDay(DateTime a, DateTime b) =>
+          a.year == b.year && a.month == b.month && a.day == b.day;
+      final start = (vd != null && !sameDay(widget.event.startTime, vd))
+          ? DateTime(vd.year, vd.month, vd.day)
+          : widget.event.startTime;
+      final end = (vd != null && !sameDay(widget.event.endTime, vd))
+          ? DateTime(vd.year, vd.month, vd.day + 1)
+          : widget.event.endTime;
+      timeLabel = '${fmt.format(start)} – ${fmt.format(end)}';
+    }
 
     return GestureDetector(
       onSecondaryTapUp: (details) => _showContextMenu(context, details, [
